@@ -75,7 +75,17 @@ export default async function SubscriptionsPage() {
 
   const candidates = await prisma.subscriptionCandidate.findMany({
     where: { userId: user.id },
-    include: { merchant: true },
+    include: {
+      merchant: {
+        include: {
+          cancellationCandidates: {
+            where: { status: "PENDING_REVIEW" },
+            orderBy: { confidence: "desc" },
+            take: 1,
+          },
+        },
+      },
+    },
     orderBy: [
       // Sort: needs review first, then confirmed, then dismissed/archived;
       // within a status, biggest monthly cost first.
@@ -202,6 +212,22 @@ export default async function SubscriptionsPage() {
                               </a>
                             );
                           })()}
+                          {c.merchant?.cancellationCandidates[0] ? (
+                            <a
+                              href={c.merchant.cancellationCandidates[0].url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-1 block max-w-[28ch] truncate text-xs text-amber-700 hover:underline dark:text-amber-300"
+                              title={
+                                c.merchant.cancellationCandidates[0].title ??
+                                c.merchant.cancellationCandidates[0].url
+                              }
+                            >
+                              Suggested:{" "}
+                              {c.merchant.cancellationCandidates[0].title ??
+                                c.merchant.cancellationCandidates[0].url}
+                            </a>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums">
                           <div>
@@ -250,6 +276,12 @@ export default async function SubscriptionsPage() {
                         <td className="px-4 py-3">
                           <SubscriptionRowActions
                             candidateId={c.id}
+                            hasCancelUrl={Boolean(
+                              getCancelLink(c.merchant),
+                            )}
+                            pendingCancellationCandidateId={
+                              c.merchant?.cancellationCandidates[0]?.id ?? null
+                            }
                             status={c.status}
                           />
                         </td>

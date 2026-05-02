@@ -20,18 +20,61 @@ datasource db {
 // ---------- Users ----------
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  name          String?
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
+  authAccounts  Account[]
+  sessions      Session[]
   plaidItems    PlaidItem[]
   plaidAccounts PlaidAccount[]
   transactions  Transaction[]
   streams       RecurringStream[]
   candidates    SubscriptionCandidate[]
   decisions     UserSubscriptionDecision[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
 }
 
 // ---------- Plaid link / accounts ----------
@@ -132,6 +175,31 @@ model Merchant {
   streams          RecurringStream[]
   candidates       SubscriptionCandidate[]
   cancellationLinks CancellationLink[]
+  cancellationCandidates CancellationCandidate[]
+}
+
+enum CancellationCandidateStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model CancellationCandidate {
+  id          String   @id @default(cuid())
+  merchantId  String
+  url         String
+  title       String?
+  snippet     String?  @db.Text
+  source      String?
+  confidence  Float?
+  status      CancellationCandidateStatus @default(PENDING_REVIEW)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, url])
+  @@index([merchantId, status])
 }
 
 model CancellationLink {

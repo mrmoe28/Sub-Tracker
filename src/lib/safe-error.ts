@@ -64,6 +64,17 @@ export interface ClientError {
 }
 
 export function clientErrorMessage(err: unknown): ClientError {
+  if (err instanceof Error && err.name === "AuthRequiredError") {
+    return { status: 401, message: "Unauthorized" };
+  }
+  if (
+    err instanceof Error &&
+    (err.message.startsWith("Missing SERPER_API_KEY") ||
+      err.message.startsWith("Serper request failed"))
+  ) {
+    return { status: 400, message: err.message };
+  }
+
   const plaid = asAxiosLike(err);
   if (plaid) {
     const code = plaid.response?.data?.error_code;

@@ -54,6 +54,15 @@ Other models:
   flattened for indexing, full Plaid payload preserved in `raw`.
 - `Merchant` — canonical name we de-dupe to.
 - `CancellationLink` — vendor-specific cancel URL/instructions per merchant.
+- `CancellationCandidate` — unverified cancellation links discovered through
+  search. Approving one copies it onto `Merchant.cancellationUrl`.
+
+## Cancellation-link search
+
+Set `SERPER_API_KEY` in `.env` to enable the "Find link" action on
+subscription rows. Serper search results are saved as pending
+`CancellationCandidate` records and must be approved before the app treats
+them as a merchant cancellation URL. Do not bypass this review step.
 
 ## Plaid token encryption
 
@@ -99,19 +108,20 @@ const accessToken = decryptToken(item);
 These are KNOWN gaps. The app is not safe to deploy to a multi-user
 environment until they are addressed.
 
-### 1. Real auth (CRITICAL)
+### 1. Google OAuth configuration
 
-`src/lib/current-user.ts` is a stub that returns the same demo user for
-every request. Every API route currently filters Prisma queries by
-`userId` correctly — the structure is right — but until real auth is
-wired, the filter resolves to a single shared identity.
+Auth.js is wired with Google OAuth and the Prisma adapter. To run it:
 
-- The stub fails-closed in production unless `ALLOW_DEMO_USER=true` is
-  explicitly set, so it can't accidentally ship to prod.
-- Replace `getCurrentUser()` with real session lookup (NextAuth, Clerk,
-  custom JWT, etc.) and have it return 401 on missing/invalid sessions.
-- Once real cookie-based sessions exist, the same-origin check in
-  `src/lib/origin-check.ts` becomes effective CSRF protection.
+- Create a Google OAuth client in Google Cloud Console.
+- Add `http://localhost:3000/api/auth/callback/google` as an authorized
+  redirect URI for local development.
+- Set `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and
+  `AUTH_URL=http://localhost:3000` in `.env`.
+- Run the latest Prisma migration so the Auth.js `Account`, `Session`,
+  and `VerificationToken` tables exist.
+
+`src/lib/current-user.ts` now resolves the authenticated Auth.js session
+and loads that database user. API routes are still scoped by `userId`.
 
 ### 2. Plaid webhooks (not implemented)
 
