@@ -82,7 +82,7 @@ async function ruleCategoryMover(userId: string): Promise<Insight | null> {
       "userId" = ${userId}
       AND "date" >= ${startWindow}
       AND "amount" > 0
-    GROUP BY category, month
+    GROUP BY "pfcPrimary", DATE_TRUNC('month', "date")
   `;
 
   const thisMonth = startOfMonth(new Date());
