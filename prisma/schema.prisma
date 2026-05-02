@@ -36,6 +36,7 @@ model User {
   streams       RecurringStream[]
   candidates    SubscriptionCandidate[]
   decisions     UserSubscriptionDecision[]
+  transactionCategories TransactionCategory[]
 }
 
 model Account {
@@ -229,6 +230,7 @@ model Transaction {
   userId    String
   accountId String?
   merchantId String?
+  userCategoryId String?
   // Optional link to whichever Plaid stream this transaction belongs to.
   recurringStreamId String?
 
@@ -257,6 +259,12 @@ model Transaction {
 
   paymentChannel String?
 
+  // User bookkeeping classification. This is separate from Plaid categories
+  // so imports can be re-synced without overwriting user decisions.
+  userCategoryName String?
+  userCategoryNotes String? @db.Text
+  categorizedAt DateTime?
+
   // Full Plaid transaction object as returned from /transactions/sync.
   raw Json?
 
@@ -266,13 +274,34 @@ model Transaction {
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   account      PlaidAccount?    @relation(fields: [accountId], references: [id], onDelete: SetNull)
   merchant     Merchant?        @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  userCategory TransactionCategory? @relation(fields: [userCategoryId], references: [id], onDelete: SetNull)
   recurringStream RecurringStream? @relation(fields: [recurringStreamId], references: [id], onDelete: SetNull)
 
   @@index([userId, date])
   @@index([accountId, date])
   @@index([merchantId])
+  @@index([userCategoryId])
   @@index([recurringStreamId])
   @@index([pfcPrimary])
+}
+
+model TransactionCategory {
+  id        String   @id @default(cuid())
+  userId    String?
+  name      String
+  group     String?
+  color     String?
+  icon      String?
+  isDefault Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([name])
+  @@index([userId, sortOrder])
 }
 
 // ---------- Plaid recurring streams ----------

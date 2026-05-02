@@ -11,6 +11,7 @@ provider cancellation links through a reviewable search workflow.
 - Plaid Link bank connection flow
 - Encrypted Plaid access-token storage using AES-256-GCM
 - Cursor-based transaction import with Plaid `/transactions/sync`
+- QuickBooks-style transaction categorization with seeded bookkeeping categories
 - Plaid recurring-stream ingestion with `/transactions/recurring/get`
 - Heuristic subscription detection from local transaction patterns
 - Subscription review states: confirm, ignore, or mark canceled
@@ -38,12 +39,13 @@ provider cancellation links through a reviewable search workflow.
 3. The server exchanges the Plaid `public_token` for an `access_token`.
 4. The access token is encrypted before it is stored.
 5. Transactions are imported with Plaid `/transactions/sync`.
-6. Subscription candidates are created from Plaid recurring streams and local
+6. Transactions can be manually categorized for bookkeeping review.
+7. Subscription candidates are created from Plaid recurring streams and local
    transaction heuristics.
-7. The user reviews each candidate and can confirm, ignore, or mark it canceled.
-8. For missing cancellation links, the app searches via Serper and saves
+8. The user reviews each candidate and can confirm, ignore, or mark it canceled.
+9. For missing cancellation links, the app searches via Serper and saves
    unverified `CancellationCandidate` records.
-9. The user approves a suggested link before it is copied to the merchant's
+10. The user approves a suggested link before it is copied to the merchant's
    trusted cancellation URL.
 
 ## Required Environment Variables

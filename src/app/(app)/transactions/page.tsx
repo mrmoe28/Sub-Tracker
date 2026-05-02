@@ -1,4 +1,5 @@
 import { SyncTransactionsButton } from "@/components/sync-transactions-button";
+import { TransactionCategorySelect } from "@/components/transaction-category-select";
 import {
   Card,
   CardContent,
@@ -20,7 +21,7 @@ export default async function TransactionsPage() {
   // SECURITY: `Transaction.raw` stores the full Plaid response object,
   // which includes location, payment_meta, and other PII. Use an explicit
   // `select` so the page never loads it into RSC scope.
-  const [transactions, hasAnyItems] = await Promise.all([
+  const [transactions, categories, hasAnyItems] = await Promise.all([
     prisma.transaction.findMany({
       where: { userId: user.id },
       select: {
@@ -31,10 +32,17 @@ export default async function TransactionsPage() {
         amount: true,
         isoCurrencyCode: true,
         pending: true,
+        userCategoryId: true,
+        userCategoryName: true,
         account: { select: { id: true, name: true, mask: true } },
       },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: PAGE_SIZE,
+    }),
+    prisma.transactionCategory.findMany({
+      where: { OR: [{ userId: null }, { userId: user.id }] },
+      select: { id: true, name: true, group: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
     prisma.plaidItem
       .count({ where: { userId: user.id } })
@@ -78,6 +86,9 @@ export default async function TransactionsPage() {
                     Description
                   </th>
                   <th className="px-4 py-2 text-left font-medium">Account</th>
+                  <th className="px-4 py-2 text-left font-medium">
+                    Category
+                  </th>
                   <th className="px-4 py-2 text-left font-medium">Status</th>
                   <th className="px-4 py-2 text-right font-medium">Amount</th>
                 </tr>
@@ -113,6 +124,18 @@ export default async function TransactionsPage() {
                               t.account.mask ? ` ····${t.account.mask}` : ""
                             }`
                           : "—"}
+                      </td>
+                      <td className="px-4 py-2">
+                        <TransactionCategorySelect
+                          transactionId={t.id}
+                          value={t.userCategoryId}
+                          categories={categories}
+                        />
+                        {t.userCategoryName ? (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Saved as {t.userCategoryName}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-2">
                         {t.pending ? (

@@ -23,6 +23,20 @@ interface MerchantSeed {
 
 const TODAY = new Date();
 
+const transactionCategories = [
+  { name: "Subscriptions", group: "Operating", color: "#2563eb", icon: "credit-card", sortOrder: 10 },
+  { name: "Software", group: "Operating", color: "#7c3aed", icon: "monitor", sortOrder: 20 },
+  { name: "Meals", group: "Expense", color: "#dc2626", icon: "utensils", sortOrder: 30 },
+  { name: "Travel", group: "Expense", color: "#0891b2", icon: "plane", sortOrder: 40 },
+  { name: "Transportation", group: "Expense", color: "#4f46e5", icon: "car", sortOrder: 50 },
+  { name: "Utilities", group: "Expense", color: "#ca8a04", icon: "zap", sortOrder: 60 },
+  { name: "Rent", group: "Expense", color: "#9333ea", icon: "home", sortOrder: 70 },
+  { name: "Payroll", group: "Income", color: "#16a34a", icon: "wallet", sortOrder: 80 },
+  { name: "Transfer", group: "Balance Sheet", color: "#64748b", icon: "repeat", sortOrder: 90 },
+  { name: "Taxes", group: "Expense", color: "#b45309", icon: "receipt", sortOrder: 100 },
+  { name: "Uncategorized", group: "Review", color: "#6b7280", icon: "circle-help", sortOrder: 999 },
+];
+
 const merchants: MerchantSeed[] = [
   {
     name: "Netflix",
@@ -100,6 +114,27 @@ const merchants: MerchantSeed[] = [
 ];
 
 async function main() {
+  for (const c of transactionCategories) {
+    await prisma.transactionCategory.upsert({
+      where: { name: c.name },
+      update: {
+        group: c.group,
+        color: c.color,
+        icon: c.icon,
+        isDefault: true,
+        sortOrder: c.sortOrder,
+      },
+      create: {
+        name: c.name,
+        group: c.group,
+        color: c.color,
+        icon: c.icon,
+        isDefault: true,
+        sortOrder: c.sortOrder,
+      },
+    });
+  }
+
   for (const m of merchants) {
     await prisma.merchant.upsert({
       where: { name: m.name },
@@ -127,8 +162,14 @@ async function main() {
     });
   }
 
-  const total = await prisma.merchant.count();
-  console.log(`Seed complete. Merchants in DB: ${total}`);
+  const [merchantTotal, categoryTotal] = await Promise.all([
+    prisma.merchant.count(),
+    prisma.transactionCategory.count(),
+  ]);
+  console.log(
+    `Seed complete. Merchants in DB: ${merchantTotal}. ` +
+      `Transaction categories in DB: ${categoryTotal}.`,
+  );
 }
 
 main()
