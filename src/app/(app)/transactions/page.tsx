@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { SyncTransactionsButton } from "@/components/sync-transactions-button";
 import { TransactionCategorySelect } from "@/components/transaction-category-select";
 import {
@@ -14,16 +16,35 @@ import { formatCurrency } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 100;
+const UNCATEGORIZED = "uncategorized";
 
-export default async function TransactionsPage() {
+interface Props {
+  searchParams?: Promise<{ categoryId?: string }>;
+}
+
+function categoryHref(categoryId: string | null): string {
+  if (!categoryId) return "/transactions";
+  return `/transactions?categoryId=${encodeURIComponent(categoryId)}`;
+}
+
+export default async function TransactionsPage({ searchParams }: Props) {
   const user = await getCurrentUser();
+  const params = await searchParams;
+  const activeCategoryId = params?.categoryId ?? null;
+  const categoryFilter =
+    activeCategoryId === UNCATEGORIZED
+      ? { userCategoryId: null }
+      : activeCategoryId
+        ? { userCategoryId: activeCategoryId }
+        : {};
 
   // SECURITY: `Transaction.raw` stores the full Plaid response object,
   // which includes location, payment_meta, and other PII. Use an explicit
   // `select` so the page never loads it into RSC scope.
-  const [transactions, categories, hasAnyItems] = await Promise.all([
+  const [transactions, summaryTransactions, categories, hasAnyItems] =
+    await Promise.all([
     prisma.transaction.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, ...categoryFilter },
       select: {
         id: true,
         date: true,
@@ -39,15 +60,72 @@ export default async function TransactionsPage() {
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: PAGE_SIZE,
     }),
+    prisma.transaction.findMany({
+      where: { userId: user.id, pending: false },
+      select: {
+        id: true,
+        amount: true,
+        isoCurrencyCode: true,
+        userCategoryId: true,
+        userCategoryName: true,
+      },
+    }),
     prisma.transactionCategory.findMany({
       where: { OR: [{ userId: null }, { userId: user.id }] },
-      select: { id: true, name: true, group: true },
+      select: { id: true, name: true, group: true, color: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
     prisma.plaidItem
       .count({ where: { userId: user.id } })
       .then((n) => n > 0),
   ]);
+
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const summary = new Map<
+    string,
+    {
+      id: string | null;
+      label: string;
+      group: string | null;
+      color: string | null;
+      total: number;
+      count: number;
+      currency: string;
+    }
+  >();
+
+  for (const txn of summaryTransactions) {
+    const key = txn.userCategoryId ?? UNCATEGORIZED;
+    const category = txn.userCategoryId
+      ? categoryById.get(txn.userCategoryId)
+      : null;
+    const current =
+      summary.get(key) ??
+      {
+        id: txn.userCategoryId,
+        label: category?.name ?? txn.userCategoryName ?? "Uncategorized",
+        group: category?.group ?? (txn.userCategoryId ? null : "Review"),
+        color: category?.color ?? null,
+        total: 0,
+        count: 0,
+        currency: txn.isoCurrencyCode ?? "USD",
+      };
+    current.total += Number(txn.amount);
+    current.count += 1;
+    summary.set(key, current);
+  }
+
+  const summaryRows = [...summary.values()].sort((a, b) => {
+    if (a.id === null) return -1;
+    if (b.id === null) return 1;
+    return Math.abs(b.total) - Math.abs(a.total);
+  });
+  const activeCategory =
+    activeCategoryId === UNCATEGORIZED
+      ? { name: "Uncategorized" }
+      : activeCategoryId
+        ? categoryById.get(activeCategoryId)
+        : null;
 
   return (
     <div className="space-y-6">
@@ -66,12 +144,86 @@ export default async function TransactionsPage() {
 
       <Card>
         <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>Category summary</CardTitle>
+              <CardDescription>
+                Posted transaction totals grouped by your bookkeeping category.
+              </CardDescription>
+            </div>
+            {activeCategory ? (
+              <Link
+                href="/transactions"
+                className="rounded-md border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                Clear filter
+              </Link>
+            ) : null}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {summaryRows.length === 0 ? (
+            <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+              No posted transactions to summarize yet.
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {summaryRows.map((row) => {
+                const href = categoryHref(row.id ?? UNCATEGORIZED);
+                const active =
+                  activeCategoryId === (row.id ?? UNCATEGORIZED);
+                return (
+                  <Link
+                    key={row.id ?? UNCATEGORIZED}
+                    href={href}
+                    className={`rounded-md border p-4 transition-colors hover:bg-muted/60 ${
+                      active ? "border-foreground bg-muted/50" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{
+                              backgroundColor: row.color ?? "#6b7280",
+                            }}
+                          />
+                          <span className="truncate text-sm font-medium">
+                            {row.label}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {row.group ?? "Category"} / {row.count} transaction
+                          {row.count === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                      <div className="text-right font-mono text-sm font-semibold tabular-nums">
+                        {formatCurrency(row.total.toFixed(2), row.currency)}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>
-            {transactions.length === 0 ? "No transactions" : "Recent activity"}
+            {transactions.length === 0
+              ? "No transactions"
+              : activeCategory
+                ? `${activeCategory.name} transactions`
+                : "Recent activity"}
           </CardTitle>
           <CardDescription>
             {hasAnyItems
-              ? "Click Sync to pull the latest from your linked accounts."
+              ? activeCategory
+                ? `Showing up to ${PAGE_SIZE} transactions in this category.`
+                : "Click Sync to pull the latest from your linked accounts."
               : "Connect a bank from the dashboard to start importing transactions."}
           </CardDescription>
         </CardHeader>
@@ -97,7 +249,7 @@ export default async function TransactionsPage() {
                 {transactions.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-4 py-8 text-center text-muted-foreground"
                     >
                       No data
