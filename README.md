@@ -1,9 +1,22 @@
 # Sub-Tracker
 
-Sub-Tracker is a Next.js app for finding forgotten subscriptions from bank
-transactions. It connects to bank accounts through Plaid Sandbox, imports
-transactions, detects recurring subscription-like charges, and helps track down
-provider cancellation links through a reviewable search workflow.
+A personal subscription auditor that connects to your bank via Plaid, ingests
+every transaction, flags the recurring ones, and tells you what your
+subscriptions actually cost per year. When you're ready to cancel, it surfaces
+a verified link straight to the cancellation page — no more googling
+"how to cancel [merchant]."
+
+Designed to be self-hosted so your Plaid access tokens never leave your
+own infrastructure.
+
+## Screenshots
+
+### Transactions and bookkeeping categorization
+![Transactions page with category dropdown](docs/screenshots/transactions.png)
+
+### Bank connection flow (Plaid Link)
+![Plaid Link sandbox login](docs/screenshots/plaid-link-sandbox.png)
+
 
 ## Features
 
@@ -132,14 +145,17 @@ npm run db:studio  # Open Prisma Studio
 
 ## Plaid Sandbox Notes
 
-The app is intentionally gated to `PLAID_ENV=sandbox` while the integration is
-being built and audited.
+`PLAID_ENV` accepts `sandbox`, `development`, or `production`. Sandbox is the
+default and is the only environment safe to test against without Plaid
+approval. Switching to `production` requires real Plaid credentials and a
+completed Plaid review.
 
 Common Plaid Sandbox test credentials:
 
 ```text
 username: user_good
 password: pass_good
+mfa code: 1234
 ```
 
 The Plaid phone-number step is optional. For Sandbox testing, choose
