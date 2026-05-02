@@ -1,0 +1,365 @@
+// Sub-Tracker schema
+//
+// Two layers of "subscriptions":
+//   - RecurringStream        = what Plaid tells us is recurring (their algorithm)
+//   - SubscriptionCandidate  = what *our* app classifies as a real subscription,
+//                              optionally linked back to a Plaid stream.
+//
+// Plaid access tokens are NEVER stored in plaintext. Only the AES-GCM
+// ciphertext + iv + auth tag + key version are persisted (see PlaidItem).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Users ----------
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plaidItems    PlaidItem[]
+  plaidAccounts PlaidAccount[]
+  transactions  Transaction[]
+  streams       RecurringStream[]
+  candidates    SubscriptionCandidate[]
+  decisions     UserSubscriptionDecision[]
+}
+
+// ---------- Plaid link / accounts ----------
+
+model PlaidItem {
+  id              String   @id @default(cuid())
+  userId          String
+  // Plaid's stable item identifier
+  plaidItemId     String   @unique
+  institutionId   String?
+  institutionName String?
+
+  // Encrypted access_token (AES-256-GCM).
+  // Never write the plaintext token to this table.
+  accessTokenCiphertext Bytes
+  accessTokenIv         Bytes
+  accessTokenAuthTag    Bytes
+  // Identifies which KMS/env key encrypted the row, so we can rotate.
+  encryptionKeyVersion  Int    @default(1)
+
+  status              PlaidItemStatus @default(ACTIVE)
+  // Cursor for /transactions/sync incremental pulls
+  transactionsCursor  String?
+  lastSyncedAt        DateTime?
+  consentExpiresAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts PlaidAccount[]
+
+  @@index([userId])
+}
+
+enum PlaidItemStatus {
+  ACTIVE
+  LOGIN_REQUIRED
+  REVOKED
+  ERROR
+}
+
+model PlaidAccount {
+  id              String   @id @default(cuid())
+  userId          String
+  plaidItemId     String
+  // Plaid's account_id
+  plaidAccountId  String   @unique
+
+  name            String
+  officialName    String?
+  mask            String?
+  type            String?
+  subtype         String?
+  currency        String?  // ISO currency code from Plaid
+
+  currentBalance  Decimal? @db.Decimal(14, 2)
+  availableBalance Decimal? @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plaidItem    PlaidItem         @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  streams      RecurringStream[]
+
+  @@index([userId])
+  @@index([plaidItemId])
+}
+
+// ---------- Merchants & cancellation help ----------
+
+model Merchant {
+  id           String  @id @default(cuid())
+  // Canonical name we deduplicate transactions/streams to.
+  name         String  @unique
+  // Plaid's normalized merchant identifier when available.
+  plaidMerchantId String? @unique
+  domain       String?
+  logoUrl      String?
+  category     String?
+
+  // Curated cancellation/contact info. URLs MUST be human-verified —
+  // we never fabricate them. `confidence` and `lastVerifiedAt` describe
+  // how trustworthy and how fresh this row's contact info is.
+  website           String?
+  supportUrl        String?
+  cancellationUrl   String?
+  cancellationNotes String?  @db.Text
+  confidence        Float?
+  lastVerifiedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions     Transaction[]
+  streams          RecurringStream[]
+  candidates       SubscriptionCandidate[]
+  cancellationLinks CancellationLink[]
+}
+
+model CancellationLink {
+  id           String   @id @default(cuid())
+  merchantId   String
+  // Where the user goes to cancel — deep link, account page, etc.
+  url          String
+  label        String?
+  instructions String?  @db.Text
+  // e.g. "vendor", "internal-curated", "user-submitted"
+  source       String?
+  verifiedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+}
+
+// ---------- Transactions ----------
+
+model Transaction {
+  id String @id @default(cuid())
+
+  userId    String
+  accountId String?
+  merchantId String?
+  // Optional link to whichever Plaid stream this transaction belongs to.
+  recurringStreamId String?
+
+  // Plaid identifiers
+  plaidTransactionId String  @unique
+  plaidAccountId     String
+
+  // Core fields
+  name           String   // Plaid's `name` (raw description)
+  merchantName   String?  // Plaid's normalized `merchant_name`
+  amount         Decimal  @db.Decimal(14, 2) // Plaid: positive = outflow
+  isoCurrencyCode String?
+  date           DateTime @db.Date
+  authorizedDate DateTime? @db.Date
+  pending        Boolean  @default(false)
+
+  // Plaid legacy `category` array (e.g. ["Food and Drink", "Restaurants"])
+  category       String[]
+  categoryId     String?
+
+  // Plaid `personal_finance_category` object — flattened for indexing,
+  // full object is preserved in `raw`.
+  pfcPrimary         String?
+  pfcDetailed        String?
+  pfcConfidenceLevel String?
+
+  paymentChannel String?
+
+  // Full Plaid transaction object as returned from /transactions/sync.
+  raw Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      PlaidAccount?    @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  merchant     Merchant?        @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  recurringStream RecurringStream? @relation(fields: [recurringStreamId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@index([accountId, date])
+  @@index([merchantId])
+  @@index([recurringStreamId])
+  @@index([pfcPrimary])
+}
+
+// ---------- Plaid recurring streams ----------
+
+enum RecurringFrequency {
+  WEEKLY
+  BIWEEKLY
+  SEMI_MONTHLY
+  MONTHLY
+  ANNUALLY
+  UNKNOWN
+}
+
+enum PlaidStreamStatus {
+  MATURE
+  EARLY_DETECTION
+  TOMBSTONED
+  UNKNOWN
+}
+
+enum PlaidStreamConfidence {
+  VERY_HIGH
+  HIGH
+  MEDIUM
+  LOW
+  UNKNOWN
+}
+
+model RecurringStream {
+  id String @id @default(cuid())
+
+  userId    String
+  accountId String?
+  merchantId String?
+
+  // Plaid's stream_id from /transactions/recurring/get
+  plaidStreamId String  @unique
+  // Whether Plaid considers this an inflow or outflow stream.
+  isInflow      Boolean @default(false)
+
+  description       String? // Plaid `description`
+  merchantName      String?
+  frequency         RecurringFrequency    @default(UNKNOWN)
+  status            PlaidStreamStatus     @default(UNKNOWN)
+  confidence        PlaidStreamConfidence @default(UNKNOWN)
+  isActive          Boolean               @default(true)
+
+  averageAmount  Decimal?  @db.Decimal(14, 2)
+  lastAmount     Decimal?  @db.Decimal(14, 2)
+  isoCurrencyCode String?
+
+  firstDate          DateTime? @db.Date
+  lastDate           DateTime? @db.Date
+  predictedNextDate  DateTime? @db.Date
+
+  // Full /transactions/recurring/get stream object.
+  raw Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      PlaidAccount?           @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  merchant     Merchant?               @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
+  candidates   SubscriptionCandidate[]
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([merchantId])
+}
+
+// ---------- Our classification layer ----------
+
+enum SubscriptionCandidateSource {
+  PLAID_STREAM   // Derived from a Plaid RecurringStream
+  HEURISTIC      // Our own pattern detection on transactions
+  USER           // Manually added by the user
+}
+
+enum SubscriptionCandidateStatus {
+  PENDING_REVIEW // We think it's a sub; user hasn't decided
+  CONFIRMED      // User confirmed
+  DISMISSED      // User said "not a subscription"
+  ARCHIVED       // No longer active (canceled / stale)
+}
+
+model SubscriptionCandidate {
+  id String @id @default(cuid())
+
+  userId            String
+  merchantId        String?
+  // Set when this candidate was generated from a Plaid stream.
+  recurringStreamId String?
+
+  // Display name we show the user (normalized).
+  name             String
+  source           SubscriptionCandidateSource @default(HEURISTIC)
+  status           SubscriptionCandidateStatus @default(PENDING_REVIEW)
+
+  frequency        RecurringFrequency @default(UNKNOWN)
+  // Latest observed amount.
+  lastAmount       Decimal? @db.Decimal(14, 2)
+  // Normalized monthly cost for sorting / totals.
+  normalizedMonthlyAmount Decimal? @db.Decimal(14, 2)
+  isoCurrencyCode  String?
+
+  firstSeenAt      DateTime?
+  lastSeenAt       DateTime?
+  predictedNextDate DateTime? @db.Date
+
+  // Our internal confidence score 0..1.
+  confidence       Float?
+
+  notes            String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user            User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  merchant        Merchant?                  @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  recurringStream RecurringStream?           @relation(fields: [recurringStreamId], references: [id], onDelete: SetNull)
+  decisions       UserSubscriptionDecision[]
+
+  // Avoid duplicating a Plaid stream as multiple candidates per user.
+  @@unique([userId, recurringStreamId])
+  @@index([userId, status])
+  @@index([merchantId])
+}
+
+// ---------- User decisions ----------
+
+enum SubscriptionDecision {
+  KEEP
+  CANCEL_REQUESTED
+  CANCELED
+  IGNORE
+  SNOOZE
+}
+
+model UserSubscriptionDecision {
+  id String @id @default(cuid())
+
+  userId      String
+  candidateId String
+
+  decision    SubscriptionDecision
+  notes       String?  @db.Text
+  // For SNOOZE: when to surface the candidate again.
+  snoozedUntil DateTime?
+  decidedAt   DateTime @default(now())
+
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidate SubscriptionCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([userId, decision])
+  @@index([candidateId])
+}
