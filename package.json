@@ -15,7 +15,7 @@
     "db:studio": "dotenv -e .env -o -- prisma studio"
   },
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
