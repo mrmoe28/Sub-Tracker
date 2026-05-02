@@ -1,0 +1,53 @@
+Just shipped Sub-Tracker — a personal subscription tracker that hooks into your bank via Plaid, ingests transactions, detects recurring charges, and surfaces what you're really spending each month.
+
+The pitch: stop subscriptions from quietly draining your account, and when you want to cut one, give you a verified cancellation link instead of the usual googling.
+
+————————————————
+
+THE STACK (and why)
+
+— Next.js App Router + TypeScript — server components keep Plaid tokens off the client; one runtime for UI and API.
+
+— Prisma + PostgreSQL — strong migrations, typed queries, clean relational shape (Items → Accounts → Transactions).
+
+— Auth.js with Google OAuth — personal-use app, Google login is enough.
+
+— Plaid Node SDK on /transactions/sync (cursor-based, not the deprecated /transactions/get).
+
+— AES-256-GCM via Node's crypto module — Plaid access tokens are encrypted at rest with versioned keys.
+
+— Tailwind v4 + shadcn/ui — utilitarian dashboard, not a marketing page.
+
+— Self-hosted on Coolify — it's financial data, so I wanted full control over secrets and the DB.
+
+————————————————
+
+WHAT WENT WRONG (and what fixed it)
+
+1) "Forbidden: cross-origin request" on every Plaid POST.
+The same-origin gate compared the browser's Origin header to new URL(req.url).origin. Behind Coolify's TLS-terminating proxy, req.url was rebuilt with an internal http:// host, so https://app.com never matched. Fix: reconstruct the expected origin from x-forwarded-host + x-forwarded-proto.
+
+2) Plaid sandbox lock.
+The env loader hard-threw if PLAID_ENV wasn't "sandbox" — fine during the audit, but it blocked real banks. Widened the type to sandbox | development | production with an allowlist.
+
+3) "Internal error" on Connect bank.
+Logs showed: TOKEN_ENCRYPTION_KEY must decode to 32 bytes, got 48. The key was generated with `openssl rand -base64 48` instead of 32. AES-256 needs exactly 32 bytes. Rotated to a fresh key, redeployed.
+
+4) Categorize dropdown only showed "Uncategorized."
+The 11 default categories live in prisma/seed.ts, but the production start script only ran `prisma migrate deploy`. Seed never ran. Added `prisma db seed` to the start script (idempotent upserts) and promoted tsx out of devDependencies so it survives prod install pruning.
+
+————————————————
+
+KEY TAKEAWAYS
+
+— "Same origin" behind a reverse proxy is not what req.url tells you. Trust the forwarded headers.
+
+— Generate keys with the exact byte length your algorithm needs. AES-256 = 32 bytes, not 48.
+
+— If your seed isn't part of your deploy, your seed isn't real.
+
+— Encrypt tokens at rest. Strip request bodies before logging. Filter every query by userId. Defense-in-depth costs almost nothing up front and saves you when something inevitably leaks.
+
+————————————————
+
+#NextJS #TypeScript #Plaid #Prisma #FullStack #IndieHacking #BuildInPublic #Postgres #SoftwareEngineering
