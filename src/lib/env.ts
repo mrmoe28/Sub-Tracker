@@ -23,7 +23,7 @@ function optional(name: string): string | undefined {
   return value && value.length > 0 ? value : undefined;
 }
 
-export type PlaidEnv = "sandbox";
+export type PlaidEnv = "sandbox" | "development" | "production";
 
 export interface ServerEnv {
   databaseUrl: string;
@@ -40,11 +40,14 @@ let cached: ServerEnv | undefined;
 export function getServerEnv(): ServerEnv {
   if (cached) return cached;
 
-  const plaidEnv = optional("PLAID_ENV") ?? "sandbox";
-  if (plaidEnv !== "sandbox") {
-    // We deliberately gate non-sandbox until we've audited the integration.
+  const plaidEnv = (optional("PLAID_ENV") ?? "sandbox") as PlaidEnv;
+  if (
+    plaidEnv !== "sandbox" &&
+    plaidEnv !== "development" &&
+    plaidEnv !== "production"
+  ) {
     throw new Error(
-      `PLAID_ENV must be "sandbox" for now (got "${plaidEnv}").`,
+      `PLAID_ENV must be "sandbox", "development", or "production" (got "${plaidEnv}").`,
     );
   }
 
