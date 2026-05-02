@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import {
   CreditCard,
   LayoutDashboard,
+  Lightbulb,
   Receipt,
   Settings,
-  Wallet,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ type NavItem = {
 
 const items: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Insights", href: "/insights", icon: Lightbulb },
   { label: "Subscriptions", href: "/subscriptions", icon: CreditCard },
   { label: "Transactions", href: "/transactions", icon: Receipt },
   { label: "Settings", href: "/settings", icon: Settings },
@@ -30,9 +31,11 @@ export function AppSidebar() {
 
   return (
     <aside className="hidden md:flex md:w-60 md:shrink-0 md:flex-col md:border-r md:bg-sidebar md:text-sidebar-foreground">
-      <div className="flex h-14 items-center gap-2 border-b px-4">
-        <Wallet className="h-5 w-5" />
-        <span className="text-sm font-semibold">Sub-Tracker</span>
+      <div className="flex h-14 items-center gap-2.5 border-b px-4">
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand text-[12px] font-bold tracking-tight text-brand-foreground">
+          S
+        </span>
+        <span className="text-sm font-semibold tracking-tight">Sub-Tracker</span>
       </div>
       <nav className="flex-1 space-y-1 px-2 py-3">
         {items.map((item) => {
@@ -46,7 +49,7 @@ export function AppSidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                 active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  ? "bg-brand-soft text-foreground"
                   : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               )}
             >

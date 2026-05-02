@@ -92,7 +92,7 @@ export function ConnectBankButton() {
 
   return (
     <div className="flex flex-col items-start gap-2">
-      <Button onClick={fetchLinkToken} disabled={loading}>
+      <Button variant="brand" onClick={fetchLinkToken} disabled={loading}>
         {loading ? (
           <Loader2 className="animate-spin" />
         ) : (

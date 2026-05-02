@@ -18,7 +18,12 @@ provider cancellation links through a reviewable search workflow.
 - Merchant normalization and curated cancellation metadata
 - Serper-powered cancellation-link discovery
 - Review workflow for discovered cancellation links before they become trusted
-- Dashboard, transactions, subscriptions, and settings views
+- Dashboard with KPI strip, 12-month spend trend chart, upcoming charges, and
+  inline confirm/ignore for pending review candidates
+- Insights engine with 5 deterministic rules (category mover, spend drift,
+  price hike, review pile-up, subscription concentration) surfaced on the
+  dashboard and a dedicated `/insights` page
+- Dashboard, insights, transactions, subscriptions, and settings views
 
 ## Stack
 

@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sub-Tracker · Dashboard (Operator mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ---------- tokens (mirror project oklch palette + one accent) ---------- */
+  :root {
+    --bg: oklch(0.995 0 0);
+    --surface: oklch(1 0 0);
+    --ink: oklch(0.18 0 0);
+    --ink-2: oklch(0.32 0 0);
+    --muted: oklch(0.52 0 0);
+    --faint: oklch(0.72 0 0);
+    --hair: oklch(0.93 0 0);
+    --hair-2: oklch(0.96 0 0);
+    --accent: oklch(0.58 0.12 165);          /* quiet emerald — used SPARINGLY */
+    --accent-soft: oklch(0.97 0.025 165);
+    --warn: oklch(0.58 0.13 55);             /* amber for "needs review" */
+    --warn-soft: oklch(0.97 0.03 80);
+    --rose: oklch(0.58 0.16 25);             /* spend-up indicator */
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .mono { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-feature-settings: 'tnum'; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ---------- shell ---------- */
+  .app { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 232px;
+    border-right: 1px solid var(--hair);
+    background: oklch(0.985 0 0);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .brand {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--hair);
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: -0.005em;
+  }
+  .brand-mark {
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    background: var(--ink);
+    color: white;
+    display: grid; place-items: center;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .nav { flex: 1; padding: 12px 8px; }
+  .nav a {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: var(--radius-sm);
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 500;
+    transition: background .12s ease, color .12s ease;
+  }
+  .nav a:hover { background: var(--hair-2); color: var(--ink); }
+  .nav a.active { background: oklch(0.93 0 0); color: var(--ink); }
+  .nav a svg { width: 16px; height: 16px; opacity: .9; }
+  .nav .group-label {
+    padding: 14px 12px 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+    font-weight: 500;
+  }
+  .sidebar-foot {
+    padding: 12px 16px;
+    border-top: 1px solid var(--hair);
+    font-size: 11px;
+    color: var(--faint);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pill-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  /* ---------- main area ---------- */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .topbar {
+    height: 56px;
+    border-bottom: 1px solid var(--hair);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 16px;
+    background: var(--surface);
+  }
+  .crumbs { font-size: 13px; color: var(--muted); }
+  .crumbs strong { color: var(--ink); font-weight: 500; }
+  .topbar .spacer { flex: 1; }
+  .topbar .search {
+    position: relative;
+    width: 280px;
+  }
+  .topbar .search input {
+    width: 100%; height: 32px;
+    border: 1px solid var(--hair);
+    border-radius: var(--radius-sm);
+    padding: 0 10px 0 30px;
+    font: inherit; font-size: 13px;
+    background: var(--surface);
+    color: var(--ink);
+    outline: none;
+  }
+  .topbar .search input::placeholder { color: var(--faint); }
+  .topbar .search svg {
+    position: absolute; left: 9px; top: 8px;
+    width: 14px; height: 14px; color: var(--faint);
+  }
+  .topbar .kbd {
+    position: absolute; right: 8px; top: 7px;
+    font: 11px 'Geist Mono', monospace;
+    color: var(--faint);
+    border: 1px solid var(--hair);
+    border-radius: 4px;
+    padding: 1px 5px;
+    background: var(--surface);
+  }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(135deg, oklch(0.78 0.04 80), oklch(0.62 0.06 60));
+    color: white; font-size: 12px; font-weight: 600;
+    display: grid; place-items: center;
+    letter-spacing: -0.01em;
+  }
+
+  .content { padding: 32px 32px 80px; max-width: 1280px; }
+
+  /* ---------- page header ---------- */
+  .page-head { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+  .page-head h1 {
+    font-size: 22px; font-weight: 600;
+    letter-spacing: -0.018em;
+    margin: 0 0 4px;
+  }
+  .page-head .meta {
+    font-size: 13px;
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+  .page-head .meta .dot-sep { margin: 0 6px; color: var(--faint); }
+  .page-head .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: var(--radius-sm);
+    font: inherit; font-size: 13px; font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--hair);
+    background: var(--surface);
+    color: var(--ink);
+    transition: background .12s, border-color .12s;
+  }
+  .btn:hover { background: var(--hair-2); }
+  .btn svg { width: 14px; height: 14px; }
+  .btn-primary {
+    background: var(--ink); color: white; border-color: var(--ink);
+  }
+  .btn-primary:hover { background: oklch(0.28 0 0); border-color: oklch(0.28 0 0); }
+
+  /* ---------- KPI hero strip ---------- */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr 1fr;
+    gap: 1px;
+    background: var(--hair);
+    border: 1px solid var(--hair);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+  .kpi {
+    background: var(--surface);
+    padding: 18px 20px 20px;
+    display: flex; flex-direction: column;
+    gap: 8px;
+    min-height: 110px;
+  }
+  .kpi-label {
+    font-size: 12px; color: var(--muted);
+    font-weight: 500;
+    letter-spacing: 0.005em;
+  }
+  .kpi-value {
+    font-size: 28px; font-weight: 600;
+    letter-spacing: -0.022em;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .kpi.hero .kpi-value {
+    font-size: 40px;
+    letter-spacing: -0.028em;
+  }
+  .kpi-trend {
+    display: inline-flex; align-items: center; gap: 5px;
+    font: 12px 'Geist Mono', monospace;
+    color: var(--muted);
+  }
+  .kpi-trend .pill {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--warn-soft);
+    color: oklch(0.42 0.12 55);
+  }
+  .kpi-trend .pill.down { background: var(--accent-soft); color: oklch(0.42 0.12 165); }
+  .kpi-trend svg { width: 11px; height: 11px; }
+
+  /* sparkline mini inside hero */
+  .kpi.hero .spark {
+    margin-top: 4px;
+    width: 100%;
+    height: 28px;
+  }
+
+  /* ---------- 2-col main grid ---------- */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1.55fr 1fr;
+    gap: 20px;
+    margin-bottom: 28px;
+  }
+
+  .panel {
+    border: 1px solid var(--hair);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 16px 20px 12px;
+    gap: 12px;
+  }
+  .panel-head h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .panel-head .sub { font-size: 12px; color: var(--muted); }
+  .panel-head .tabs { display: flex; gap: 2px; }
+  .panel-head .tab {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .panel-head .tab.active { background: var(--hair-2); color: var(--ink); }
+
+  /* chart panel */
+  .chart-wrap { padding: 8px 12px 18px; position: relative; }
+  .chart-wrap svg { width: 100%; height: 220px; display: block; }
+  .chart-axis {
+    display: flex; justify-content: space-between;
+    padding: 0 8px;
+    font: 11px 'Geist Mono', monospace;
+    color: var(--faint);
+  }
+  .chart-stats {
+    display: flex; gap: 28px;
+    padding: 0 20px 18px;
+    border-top: 1px solid var(--hair);
+    padding-top: 14px;
+    margin-top: 4px;
+  }
+  .chart-stats .stat .l { font-size: 11px; color: var(--muted); }
+  .chart-stats .stat .v {
+    font-size: 15px; font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+  }
+
+  /* upcoming list */
+  .upcoming { padding: 6px 0 8px; }
+  .upcoming-row {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    border-top: 1px solid var(--hair-2);
+    transition: background .12s;
+  }
+  .upcoming-row:first-child { border-top: 1px solid var(--hair); }
+  .upcoming-row:hover { background: oklch(0.985 0 0); }
+  .merch-mark {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: grid; place-items: center;
+    font: 600 11px 'Geist', sans-serif;
+    color: white;
+    letter-spacing: -0.01em;
+  }
+  .merch-name { font-size: 13.5px; font-weight: 500; line-height: 1.3; }
+  .merch-when { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .when-soon { color: oklch(0.45 0.13 25); font-weight: 500; }
+  .upcoming-amount {
+    font: 500 13.5px 'Geist Mono', monospace;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .upcoming-foot {
+    padding: 12px 20px;
+    border-top: 1px solid var(--hair);
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--muted);
+  }
+  .upcoming-foot strong { color: var(--ink); font-weight: 500; }
+
+  /* ---------- review row ---------- */
+  .review-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--hair);
+    border-top: 1px solid var(--hair);
+  }
+  .review-card {
+    background: var(--surface);
+    padding: 16px 18px 18px;
+    display: flex; flex-direction: column; gap: 10px;
+    min-height: 124px;
+  }
+  .review-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .review-name { font-size: 13.5px; font-weight: 500; }
+  .review-raw { font: 11px 'Geist Mono', monospace; color: var(--faint); margin-top: 2px; }
+  .review-amt { font: 500 14px 'Geist Mono', monospace; }
+  .conf {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted);
+  }
+  .conf-bar {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--hair);
+    position: relative;
+    overflow: hidden;
+  }
+  .conf-bar > span {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  .conf-bar.low > span { background: var(--warn); }
+  .review-actions { display: flex; gap: 6px; margin-top: auto; }
+  .btn-mini {
+    flex: 1;
+    height: 28px;
+    border: 1px solid var(--hair);
+    border-radius: 5px;
+    background: var(--surface);
+    font: 500 12px 'Geist', sans-serif;
+    color: var(--ink);
+    cursor: pointer;
+    transition: background .12s;
+  }
+  .btn-mini:hover { background: var(--hair-2); }
+  .btn-mini.confirm { background: var(--ink); color: white; border-color: var(--ink); }
+  .btn-mini.confirm:hover { background: oklch(0.3 0 0); }
+
+  /* ---------- institutions ---------- */
+  .inst-list {
+    border-top: 1px solid var(--hair);
+  }
+  .inst {
+    display: grid;
+    grid-template-columns: 32px 1fr auto auto;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 20px;
+    border-top: 1px solid var(--hair-2);
+  }
+  .inst:first-child { border-top: none; }
+  .inst-mark {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: grid; place-items: center;
+    font: 600 11px 'Geist', sans-serif;
+    color: white;
+  }
+  .inst-name { font-size: 13.5px; font-weight: 500; }
+  .inst-meta { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .inst-sync { font: 12px 'Geist Mono', monospace; color: var(--muted); }
+  .inst-status {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .inst-status .dot { background: var(--accent); }
+  .inst-status.warn .dot { background: var(--warn); }
+
+  /* badge for KPI label */
+  .label-row { display: flex; align-items: center; gap: 8px; }
+  .label-row .badge {
+    font: 10px 'Geist Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    border: 1px solid var(--hair);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============== SIDEBAR ============== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">S</span>
+      <span>Sub-Tracker</span>
+    </div>
+    <nav class="nav">
+      <a href="#" class="active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        Subscriptions
+        <span style="margin-left:auto; font: 11px 'Geist Mono', monospace; color: var(--faint);">12</span>
+      </a>
+      <a href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Transactions
+      </a>
+      <div class="group-label">Account</div>
+      <a href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </a>
+    </nav>
+    <div class="sidebar-foot">
+      <span class="pill-status"><span class="dot"></span> Plaid sandbox</span>
+      <span>v0.1.0</span>
+    </div>
+  </aside>
+
+  <!-- ============== MAIN ============== -->
+  <div class="main">
+
+    <!-- topbar -->
+    <header class="topbar">
+      <div class="crumbs"><strong>Dashboard</strong></div>
+      <div class="spacer"></div>
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input placeholder="Search merchants, transactions…" />
+        <span class="kbd">⌘K</span>
+      </div>
+      <div class="avatar">EM</div>
+    </header>
+
+    <!-- content -->
+    <div class="content">
+
+      <!-- page header -->
+      <div class="page-head">
+        <div>
+          <h1>Dashboard</h1>
+          <div class="meta">
+            Tracking <strong style="color:var(--ink); font-weight:500;">12 subscriptions</strong> across 3 banks
+            <span class="dot-sep">·</span> last sync <span class="mono">4m ago</span>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Sync transactions
+          </button>
+          <button class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Connect bank
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI strip -->
+      <div class="kpi-grid">
+        <div class="kpi hero">
+          <div class="label-row">
+            <span class="kpi-label">Monthly recurring spend</span>
+            <span class="badge">May 2026</span>
+          </div>
+          <div class="kpi-value">$247.83</div>
+          <div class="kpi-trend">
+            <span class="pill">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+              $12.49 vs Apr
+            </span>
+            <span style="color:var(--muted);">5.3% increase</span>
+          </div>
+          <svg class="spark" viewBox="0 0 200 28" preserveAspectRatio="none">
+            <path d="M0,20 L17,18 L34,21 L51,15 L68,16 L85,12 L102,14 L119,11 L136,13 L153,9 L170,10 L187,7 L200,5"
+                  stroke="oklch(0.32 0 0)" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Active subscriptions</span>
+          <div class="kpi-value">12</div>
+          <span class="kpi-trend"><span class="mono">+1 since last week</span></span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Linked accounts</span>
+          <div class="kpi-value">8</div>
+          <span class="kpi-trend"><span class="mono">across 3 banks</span></span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">Annualized spend</span>
+          <div class="kpi-value">$2,973</div>
+          <span class="kpi-trend"><span class="mono">at current rate</span></span>
+        </div>
+      </div>
+
+      <!-- main 2-col grid -->
+      <div class="main-grid">
+
+        <!-- chart panel -->
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Spend over time</h2>
+              <div class="sub">Monthly recurring charges, last 12 months</div>
+            </div>
+            <div class="tabs">
+              <span class="tab">3M</span>
+              <span class="tab">6M</span>
+              <span class="tab active">12M</span>
+              <span class="tab">All</span>
+            </div>
+          </div>
+
+          <div class="chart-wrap">
+            <svg viewBox="0 0 600 220" preserveAspectRatio="none" aria-hidden="true">
+              <!-- gridlines -->
+              <g stroke="oklch(0.96 0 0)" stroke-width="1">
+                <line x1="0" y1="40"  x2="600" y2="40"/>
+                <line x1="0" y1="90"  x2="600" y2="90"/>
+                <line x1="0" y1="140" x2="600" y2="140"/>
+                <line x1="0" y1="190" x2="600" y2="190"/>
+              </g>
+              <!-- y labels -->
+              <g font-family="Geist Mono, monospace" font-size="10" fill="oklch(0.72 0 0)">
+                <text x="6" y="44">$280</text>
+                <text x="6" y="94">$240</text>
+                <text x="6" y="144">$200</text>
+                <text x="6" y="194">$160</text>
+              </g>
+
+              <!-- area fill -->
+              <defs>
+                <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stop-color="oklch(0.18 0 0)" stop-opacity="0.10"/>
+                  <stop offset="100%" stop-color="oklch(0.18 0 0)" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M40,170 C70,160 100,150 130,158 C160,166 190,135 220,138 C250,141 280,118 310,124 C340,130 370,108 400,98 C430,88 460,82 490,72 C520,64 550,58 580,52 L580,210 L40,210 Z"
+                    fill="url(#areaFill)"/>
+              <!-- main line -->
+              <path d="M40,170 C70,160 100,150 130,158 C160,166 190,135 220,138 C250,141 280,118 310,124 C340,130 370,108 400,98 C430,88 460,82 490,72 C520,64 550,58 580,52"
+                    fill="none" stroke="oklch(0.18 0 0)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- last data point -->
+              <circle cx="580" cy="52" r="3.5" fill="oklch(0.18 0 0)"/>
+              <circle cx="580" cy="52" r="6" fill="oklch(0.18 0 0)" fill-opacity="0.15"/>
+              <!-- subtle vertical hover line -->
+              <line x1="580" y1="40" x2="580" y2="200" stroke="oklch(0.85 0 0)" stroke-dasharray="2,3"/>
+              <!-- tooltip floating -->
+              <g transform="translate(488 12)">
+                <rect width="92" height="34" rx="6" fill="oklch(0.18 0 0)"/>
+                <text x="10" y="14" font-family="Geist, sans-serif" font-size="9.5" fill="oklch(0.78 0 0)" letter-spacing="0.02em">MAY 2026</text>
+                <text x="10" y="28" font-family="Geist Mono, monospace" font-size="12" fill="white" font-weight="600">$247.83</text>
+              </g>
+            </svg>
+
+            <div class="chart-axis">
+              <span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span>
+              <span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span>
+            </div>
+          </div>
+
+          <div class="chart-stats">
+            <div class="stat"><div class="l">Lowest</div><div class="v mono">$172.40</div></div>
+            <div class="stat"><div class="l">Highest</div><div class="v mono">$247.83</div></div>
+            <div class="stat"><div class="l">Avg / month</div><div class="v mono">$208.61</div></div>
+            <div class="stat"><div class="l">Total YTD</div><div class="v mono">$1,043.05</div></div>
+          </div>
+        </section>
+
+        <!-- upcoming charges -->
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Upcoming charges</h2>
+              <div class="sub">Next 7 days, predicted from past cadence</div>
+            </div>
+          </div>
+
+          <div class="upcoming">
+            <div class="upcoming-row">
+              <div class="merch-mark" style="background:#1DB954;">S</div>
+              <div>
+                <div class="merch-name">Spotify Premium</div>
+                <div class="merch-when when-soon">Tomorrow · May 2</div>
+              </div>
+              <div class="upcoming-amount">$9.99</div>
+            </div>
+            <div class="upcoming-row">
+              <div class="merch-mark" style="background:#E50914;">N</div>
+              <div>
+                <div class="merch-name">Netflix Standard</div>
+                <div class="merch-when">In 3 days · May 4</div>
+              </div>
+              <div class="upcoming-amount">$15.49</div>
+            </div>
+            <div class="upcoming-row">
+              <div class="merch-mark" style="background:#FA0F00;">A</div>
+              <div>
+                <div class="merch-name">Adobe Creative Cloud</div>
+                <div class="merch-when">In 5 days · May 6</div>
+              </div>
+              <div class="upcoming-amount">$59.99</div>
+            </div>
+            <div class="upcoming-row">
+              <div class="merch-mark" style="background:#10A37F;">C</div>
+              <div>
+                <div class="merch-name">ChatGPT Plus</div>
+                <div class="merch-when">In 6 days · May 7</div>
+              </div>
+              <div class="upcoming-amount">$20.00</div>
+            </div>
+            <div class="upcoming-row">
+              <div class="merch-mark" style="background:oklch(0.32 0 0);">N</div>
+              <div>
+                <div class="merch-name">Notion Personal Pro</div>
+                <div class="merch-when">In 7 days · May 8</div>
+              </div>
+              <div class="upcoming-amount">$10.00</div>
+            </div>
+          </div>
+
+          <div class="upcoming-foot">
+            <span>Total this week</span>
+            <strong class="mono">$115.47</strong>
+          </div>
+        </section>
+      </div>
+
+      <!-- needs review -->
+      <section class="panel" style="margin-bottom:28px;">
+        <div class="panel-head">
+          <div>
+            <h2>Needs review <span class="mono" style="font-weight:400; color:var(--muted); font-size:13px; margin-left:6px;">3</span></h2>
+            <div class="sub">Detected as recurring but unconfirmed. Confirm or ignore to clean up your list.</div>
+          </div>
+          <a href="#" style="font-size:12px; color:var(--muted); text-decoration:none;">View all →</a>
+        </div>
+
+        <div class="review-grid">
+          <div class="review-card">
+            <div class="review-head">
+              <div>
+                <div class="review-name">Amazon Prime</div>
+                <div class="review-raw">AMZN PRIME · monthly</div>
+              </div>
+              <div class="review-amt">$14.99</div>
+            </div>
+            <div class="conf">
+              <div class="conf-bar"><span style="width:95%;"></span></div>
+              <span class="mono">95%</span>
+            </div>
+            <div class="review-actions">
+              <button class="btn-mini">Ignore</button>
+              <button class="btn-mini confirm">Confirm</button>
+            </div>
+          </div>
+
+          <div class="review-card">
+            <div class="review-head">
+              <div>
+                <div class="review-name">Wix.com</div>
+                <div class="review-raw">WIX.COM*WEBSITE · monthly</div>
+              </div>
+              <div class="review-amt">$16.00</div>
+            </div>
+            <div class="conf">
+              <div class="conf-bar low"><span style="width:62%;"></span></div>
+              <span class="mono">62%</span>
+            </div>
+            <div class="review-actions">
+              <button class="btn-mini">Ignore</button>
+              <button class="btn-mini confirm">Confirm</button>
+            </div>
+          </div>
+
+          <div class="review-card">
+            <div class="review-head">
+              <div>
+                <div class="review-name">DigitalOcean</div>
+                <div class="review-raw">DIGITALOCEAN.COM · monthly</div>
+              </div>
+              <div class="review-amt">$5.00</div>
+            </div>
+            <div class="conf">
+              <div class="conf-bar"><span style="width:88%;"></span></div>
+              <span class="mono">88%</span>
+            </div>
+            <div class="review-actions">
+              <button class="btn-mini">Ignore</button>
+              <button class="btn-mini confirm">Confirm</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- connected institutions -->
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Connected institutions</h2>
+            <div class="sub">Plaid sandbox · 3 connected</div>
+          </div>
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add</button>
+        </div>
+        <div class="inst-list">
+
+          <div class="inst">
+            <div class="inst-mark" style="background:#117ACA;">C</div>
+            <div>
+              <div class="inst-name">Chase</div>
+              <div class="inst-meta">3 accounts · Sapphire Reserve · Checking · Savings</div>
+            </div>
+            <div class="inst-status"><span class="dot"></span> Healthy</div>
+            <div class="inst-sync">4m ago</div>
+          </div>
+
+          <div class="inst">
+            <div class="inst-mark" style="background:#E31837;">B</div>
+            <div>
+              <div class="inst-name">Bank of America</div>
+              <div class="inst-meta">2 accounts · Cash Rewards · Checking</div>
+            </div>
+            <div class="inst-status"><span class="dot"></span> Healthy</div>
+            <div class="inst-sync">12m ago</div>
+          </div>
+
+          <div class="inst">
+            <div class="inst-mark" style="background:#004977;">A</div>
+            <div>
+              <div class="inst-name">American Express</div>
+              <div class="inst-meta">1 account · Gold Card</div>
+            </div>
+            <div class="inst-status warn"><span class="dot"></span> Reauth needed</div>
+            <div class="inst-sync">3d ago</div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
