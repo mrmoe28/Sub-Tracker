@@ -10,9 +10,21 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export default async function LandingPage() {
+type SearchParams = Promise<{ invite_email?: string | string[] }>;
+
+export default async function LandingPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const session = await auth();
   if (session) redirect("/dashboard");
+
+  const params = await searchParams;
+  const rawInvite = Array.isArray(params.invite_email)
+    ? params.invite_email[0]
+    : params.invite_email;
+  const inviteEmail = rawInvite?.trim();
 
   return (
     <div className="flex min-h-svh items-center justify-center px-4 py-12">
@@ -24,6 +36,13 @@ export default async function LandingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {inviteEmail ? (
+            <div className="rounded-md border border-brand/30 bg-brand-soft px-3 py-2 text-xs text-foreground">
+              You were invited to Sub-Tracker as{" "}
+              <span className="font-medium">{inviteEmail}</span>. Sign in with
+              that Google account to accept the invite.
+            </div>
+          ) : null}
           <SignInWithGoogleButton />
           <p className="text-center text-xs text-muted-foreground">
             Use the Google account you want associated with your bank data.

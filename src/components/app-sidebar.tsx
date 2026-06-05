@@ -8,17 +8,29 @@ import {
   Lightbulb,
   Receipt,
   Settings,
+  Users,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+
+type Role = "OWNER" | "ADMIN" | "MEMBER";
+
+type AppSidebarUser = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  image: string | null;
+  role: Role;
+} | null;
 
 type NavItem = {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  adminOnly?: boolean;
 };
 
-const items: NavItem[] = [
+const baseItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Insights", href: "/insights", icon: Lightbulb },
   { label: "Subscriptions", href: "/subscriptions", icon: CreditCard },
@@ -26,8 +38,17 @@ const items: NavItem[] = [
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function AppSidebar() {
+const adminItem: NavItem = {
+  label: "Users",
+  href: "/admin/users",
+  icon: Users,
+  adminOnly: true,
+};
+
+export function AppSidebar({ user }: { user?: AppSidebarUser }) {
   const pathname = usePathname();
+  const isAdmin = user?.role === "OWNER" || user?.role === "ADMIN";
+  const items = isAdmin ? [...baseItems, adminItem] : baseItems;
 
   return (
     <aside className="hidden md:flex md:w-60 md:shrink-0 md:flex-col md:border-r md:bg-sidebar md:text-sidebar-foreground">
@@ -59,9 +80,21 @@ export function AppSidebar() {
           );
         })}
       </nav>
-      <div className="border-t px-4 py-3 text-xs text-muted-foreground">
-        v0.1.0
-      </div>
+      {user ? (
+        <div className="border-t px-4 py-3 text-xs text-muted-foreground">
+          <div className="truncate font-medium text-foreground">
+            {user.name || user.email || "Signed in"}
+          </div>
+          <div className="truncate">{user.email}</div>
+          <div className="mt-1 inline-flex rounded bg-brand-soft px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
+            {user.role}
+          </div>
+        </div>
+      ) : (
+        <div className="border-t px-4 py-3 text-xs text-muted-foreground">
+          v0.1.0
+        </div>
+      )}
     </aside>
   );
 }

@@ -19,12 +19,19 @@ datasource db {
 
 // ---------- Users ----------
 
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 model User {
   id            String    @id @default(cuid())
   email         String?   @unique
   name          String?
   emailVerified DateTime?
   image         String?
+  role          UserRole  @default(MEMBER)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -37,6 +44,7 @@ model User {
   candidates    SubscriptionCandidate[]
   decisions     UserSubscriptionDecision[]
   transactionCategories TransactionCategory[]
+  invitesSent   Invite[]  @relation("InviteInvitedBy")
 }
 
 model Account {
@@ -204,7 +212,7 @@ model CancellationCandidate {
 }
 
 model CancellationLink {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   merchantId   String
   // Where the user goes to cancel — deep link, account page, etc.
   url          String
@@ -452,11 +460,37 @@ model UserSubscriptionDecision {
   notes       String?  @db.Text
   // For SNOOZE: when to surface the candidate again.
   snoozedUntil DateTime?
-  decidedAt   DateTime @default(now())
+  decidedAt   DateTime  @default(now())
 
   user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   candidate SubscriptionCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   @@index([userId, decision])
   @@index([candidateId])
+}
+
+// ---------- Invites ----------
+//
+// Email-gated access. An Invite lets one specific Google account sign in.
+// Once a User row exists for that email, future sign-ins are gated by the
+// User row itself (see src/auth.ts signIn callback).
+//
+// Tokens are stored as a hash. The plaintext is only ever embedded in the
+// email link.
+
+model Invite {
+  id           String    @id @default(cuid())
+  email        String
+  // SHA-256 hash of the plaintext token that goes in the email link.
+  tokenHash    String    @unique
+  invitedById  String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  invitedBy    User      @relation("InviteInvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([invitedById])
+  @@index([revokedAt])
 }
