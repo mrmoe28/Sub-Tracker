@@ -33,6 +33,7 @@ export interface ServerEnv {
   plaidSecret: string;
   plaidEnv: PlaidEnv;
   plaidRedirectUri?: string;
+  plaidWebhookUrl?: string;
 }
 
 let cached: ServerEnv | undefined;
@@ -61,6 +62,7 @@ export function getServerEnv(): ServerEnv {
     plaidSecret: required("PLAID_SECRET"),
     plaidEnv,
     plaidRedirectUri: optional("PLAID_REDIRECT_URI"),
+    plaidWebhookUrl: optional("PLAID_WEBHOOK_URL"),
   };
   return cached;
 }

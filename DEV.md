@@ -123,20 +123,37 @@ Auth.js is wired with Google OAuth and the Prisma adapter. To run it:
 `src/lib/current-user.ts` now resolves the authenticated Auth.js session
 and loads that database user. API routes are still scoped by `userId`.
 
-### 2. Plaid webhooks (not implemented)
+### 2. Plaid webhooks
 
-There is no webhook handler. When you add one
-(`src/app/api/plaid/webhook/route.ts`):
+Implemented in `src/app/api/plaid/webhook/route.ts`.
 
-- Verify the JWT signature on every webhook using
-  `plaid.webhookVerificationKeyGet({ key_id })` and the `Plaid-Verification`
-  header. **Don't trust the body until the signature verifies.**
-- Deduplicate by `webhook_code` + `item_id` (and the per-event id where
-  available). Plaid retries on 5xx; idempotent processing is required.
-- The handler should look up the `PlaidItem` by `plaidItemId`, then call
-  `syncPlaidItemTransactions(plaidItem.id, plaidItem.userId)` — the sync
-  function now requires `userId` so the access token can only be loaded
-  for the matching user.
+**How it works**
+- `POST /api/plaid/webhook` receives Plaid webhooks. It immediately returns `200 {received:true}` and queues the actual work asynchronously so Plaid never retries.
+- `TRANSACTIONS` webhooks (`SYNC_UPDATES_AVAILABLE`, `DEFAULT_UPDATE`, `INITIAL_UPDATE`, `HISTORICAL_UPDATE`, `TRANSACTIONS_REMOVED`) trigger `syncPlaidItemTransactions` + `syncRecurringStreams` for the matching item.
+- `ITEM` webhooks (`ERROR`, `PENDING_EXPIRATION`, `USER_PERMISSION_REVOKED`) update the `PlaidItem.status` field.
+- All sync calls are scoped by `userId` so an item-level webhook can't touch another user's data.
+
+**Local testing**
+1. Start ngrok: `ngrok http 3000`
+2. Set `PLAID_WEBHOOK_URL=https://<your-ngrok-id>.ngrok.io/api/plaid/webhook` in `.env`
+3. Restart the dev server so the env is picked up.
+4. Connect a bank; Plaid will send webhooks to your tunnel.
+5. Or fire manually via the Sandbox API:
+   ```bash
+   curl -X POST https://sandbox.plaid.com/sandbox/item/fire_webhook \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "client_id": "YOUR_PLAID_CLIENT_ID",
+       "secret": "YOUR_PLAID_SECRET",
+       "access_token": "ACCESS_TOKEN_OF_THE_ITEM",
+       "webhook_code": "DEFAULT_UPDATE"
+     }'
+   ```
+
+**Production checklist**
+- The webhook URL must be `https` with a valid SSL certificate.
+- Optionally verify the `Plaid-Verification` JWT signature using `plaid.webhookVerificationKeyGet({ key_id })` — currently skipped (Plaid marks this as optional).
+- Deduplication is handled naturally by the cursor-based sync, but you can add an `idempotency_key` table if you want stronger guarantees.
 
 ### 3. What is already in place
 

@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
       country_codes: [CountryCode.Us],
       language: "en",
       redirect_uri: env.plaidRedirectUri,
+      webhook: env.plaidWebhookUrl || undefined,
     });
 
     return NextResponse.json({ link_token: response.data.link_token });
