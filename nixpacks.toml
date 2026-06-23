@@ -1,2 +1,8 @@
+[phases.setup]
+# Override to skip nix-collect-garbage -d which fails in Coolify's BuildKit
+# sandbox (cannot create Unix domain socket for nix-daemon connection).
+# nix-env install succeeds; only the GC step fails, so we drop it.
+cmds = ['nix-env -if .nixpacks/nixpkgs-*.nix']
+
 [phases.install]
 cmds = ['npm install --no-audit --prefer-offline']
