@@ -1,77 +1,46 @@
 # Coolify best practices for Next.js deployment
-# https://coolify.io/docs/applications/nextjs
-# https://coolify.io/docs/applications/build-packs/dockerfile
+# Based on: https://github.com/coollabsio/coolify-examples/tree/main/nextjs
 
-# ---------- deps ----------
-FROM node:24-bookworm-slim AS deps
+FROM node:22-alpine AS base
 
-# Metadata labels
-LABEL maintainer="mrmoe28"
-LABEL description="Sub-Tracker - Next.js application with Prisma"
-LABEL version="1.0.0"
+# ========================================
+# Dependencies Stage
+# ========================================
+FROM base AS deps
+RUN apk add --no-cache libc6-compat python3 make g++ git
 WORKDIR /app
 
-# Build-time arguments (Coolify injects these automatically)
-ARG NEXT_PUBLIC_APP_URL
-ARG DATABASE_URL
-ARG AUTH_SECRET
-ARG AUTH_GOOGLE_ID
-ARG AUTH_GOOGLE_SECRET
-ARG AUTH_URL
+COPY package.json package-lock.json ./
 
-COPY package*.json ./
-# Install dependencies without scripts to avoid Prisma preinstall issues in Coolify sandbox
-RUN npm install --no-audit --no-fund --ignore-scripts
+RUN npm ci --network-timeout 600000 || \
+  (npm cache clean --force && npm ci --network-timeout 600000)
 
-# ---------- builder ----------
-FROM node:24-bookworm-slim AS builder
+# ========================================
+# Builder Stage
+# ========================================
+FROM base AS builder
 WORKDIR /app
 
-# Environment variables
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV CHECKPOINT_DISABLE=1
 ENV NODE_ENV=production
 
-# Build-time arguments
-ARG NEXT_PUBLIC_APP_URL
-ARG DATABASE_URL
-ARG AUTH_SECRET
-ARG AUTH_GOOGLE_ID
-ARG AUTH_GOOGLE_SECRET
-ARG AUTH_URL
-
-# Set build-time environment variables
-ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
-ENV DATABASE_URL=${DATABASE_URL}
-ENV AUTH_SECRET=${AUTH_SECRET}
-ENV AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID}
-ENV AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET}
-ENV AUTH_URL=${AUTH_URL}
-
-# Copy dependencies and source
 COPY --from=deps /app/node_modules ./node_modules
-COPY prisma ./prisma
 COPY . .
 
-# Build application
 RUN npm run build
 
-# ---------- runner ----------
-FROM node:24-bookworm-slim AS runner
-
-# Metadata labels
-LABEL maintainer="mrmoe28"
-LABEL description="Sub-Tracker - Next.js application with Prisma"
-LABEL version="1.0.0"
-
+# ========================================
+# Runner Stage
+# ========================================
+FROM base AS runner
 WORKDIR /app
 
-# Runtime environment variables
+RUN apk add --no-cache libc6-compat curl
+
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV CHECKPOINT_DISABLE=1
 
 # Runtime arguments (Coolify injects these automatically)
 ARG DATABASE_URL
@@ -91,37 +60,27 @@ ENV AUTH_URL=${AUTH_URL}
 ENV NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
 ENV NEXTAUTH_URL=${NEXTAUTH_URL}
 
-# Copy built application
+RUN addgroup -g 1001 -S nodejs && \
+  adduser -S nextjs -u 1001
+
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # Copy Prisma runtime dependencies
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
-COPY --from=builder /app/node_modules/tsx ./node_modules/tsx
-COPY --from=builder /app/node_modules/.bin/tsx ./node_modules/.bin/tsx
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/tsx ./node_modules/tsx
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/tsx ./node_modules/.bin/tsx
 
-# Copy startup script
-COPY start.sh ./start.sh
-RUN chmod +x start.sh
-
-# Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs && \
-    chown -R nextjs:nodejs /app
-
-# Switch to non-root user
 USER nextjs
 
-# Expose port
 EXPOSE 3000
 
 # Health check (Coolify best practice)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
 
-# Start application
-CMD ["./start.sh"]
+CMD ["node", "server.js"]
