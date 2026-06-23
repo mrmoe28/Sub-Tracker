@@ -1,20 +1,17 @@
-FROM node:24-bookworm AS builder
+FROM node:24-bookworm-slim AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV CI=true
 ENV CHECKPOINT_DISABLE=1
+ENV CI=true
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --ignore-scripts && npm cache clean --force \
-    # Remove native SWC binary so Next.js falls back to WASM
-    # (avoids tokio UnixStream PermissionDenied in restricted sandbox)
-    && rm -rf node_modules/@next/swc-linux-x64-gnu node_modules/@next/swc-linux-x64-musl
+RUN npm ci --ignore-scripts
 
 COPY prisma ./prisma
-RUN CHECKPOINT_DISABLE=1 npx prisma generate
+RUN npx prisma generate
 
 COPY . .
-RUN CHECKPOINT_DISABLE=1 npx next build
+RUN npm run build
 
 FROM node:24-bookworm-slim
 WORKDIR /app
@@ -22,6 +19,7 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV CHECKPOINT_DISABLE=1
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
