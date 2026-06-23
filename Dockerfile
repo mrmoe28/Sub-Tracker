@@ -2,7 +2,7 @@
 FROM node:24-bookworm-slim AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --no-audit --no-fund
+RUN npm install --no-audit --no-fund --ignore-scripts
 
 # ---------- builder ----------
 FROM node:24-bookworm-slim AS builder
