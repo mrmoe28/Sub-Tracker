@@ -2,13 +2,13 @@
 # https://coolify.io/docs/applications/nextjs
 # https://coolify.io/docs/applications/build-packs/dockerfile
 
+# ---------- deps ----------
+FROM node:24-bookworm-slim AS deps
+
 # Metadata labels
 LABEL maintainer="mrmoe28"
 LABEL description="Sub-Tracker - Next.js application with Prisma"
 LABEL version="1.0.0"
-
-# ---------- deps ----------
-FROM node:24-bookworm-slim AS deps
 WORKDIR /app
 
 # Build-time arguments (Coolify injects these automatically)
