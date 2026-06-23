@@ -2,16 +2,17 @@ FROM node:20-bookworm AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_DISABLE_SWC=1
 ENV CI=true
+ENV CHECKPOINT_DISABLE=1
 WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci --ignore-scripts && npm cache clean --force
 
 COPY prisma ./prisma
-RUN npx prisma generate
+RUN CHECKPOINT_DISABLE=1 npx prisma generate
 
 COPY . .
-RUN npm run build
+RUN CHECKPOINT_DISABLE=1 npx next build
 
 FROM node:20-bookworm
 WORKDIR /app
