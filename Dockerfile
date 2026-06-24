@@ -1,19 +1,23 @@
-# Coolify best practices for Next.js deployment
-# Based on: https://github.com/coollabsio/coolify-examples/tree/main/nextjs
+# Uses node:24-slim (Debian) to match the pre-generated Prisma client binary
+# (libquery_engine-debian-openssl-3.0.x.so.node committed in node_modules/.prisma).
+# prisma generate is intentionally skipped — the Coolify build sandbox blocks
+# child-process IPC (ENOTCONN), so the pre-committed client is used instead.
 
-FROM node:24-alpine AS base
+FROM node:24-slim AS base
 
 # ========================================
 # Dependencies Stage
 # ========================================
 FROM base AS deps
-RUN apk add --no-cache libc6-compat python3 make g++ git
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ git \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-RUN npm ci --network-timeout 600000 --ignore-scripts || \
-  (npm cache clean --force && npm ci --network-timeout 600000 --ignore-scripts)
+RUN npm ci --ignore-scripts || \
+  (npm cache clean --force && npm ci --ignore-scripts)
 
 # ========================================
 # Builder Stage
@@ -24,10 +28,11 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
+# Copy npm packages first, then source.
+# COPY . . brings node_modules/.prisma from the build context
+# (.dockerignore allows it via !node_modules/.prisma).
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
-RUN ./node_modules/.bin/prisma generate
 
 RUN npm run build
 
@@ -37,7 +42,8 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-RUN apk add --no-cache libc6-compat curl
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -53,7 +59,6 @@ ARG AUTH_URL
 ARG NEXTAUTH_SECRET
 ARG NEXTAUTH_URL
 
-# Set runtime environment variables
 ENV DATABASE_URL=${DATABASE_URL}
 ENV AUTH_SECRET=${AUTH_SECRET}
 ENV AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID}
@@ -62,8 +67,8 @@ ENV AUTH_URL=${AUTH_URL}
 ENV NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
 ENV NEXTAUTH_URL=${NEXTAUTH_URL}
 
-RUN addgroup -g 1001 -S nodejs && \
-  adduser -S nextjs -u 1001
+RUN groupadd --gid 1001 nodejs && \
+    useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nextjs
 
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
@@ -81,7 +86,6 @@ USER nextjs
 
 EXPOSE 3000
 
-# Health check (Coolify best practice)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
 
