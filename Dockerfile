@@ -27,6 +27,8 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+RUN ./node_modules/.bin/prisma generate
+
 RUN npm run build
 
 # ========================================
