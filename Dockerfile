@@ -1,7 +1,7 @@
 # Coolify best practices for Next.js deployment
 # Based on: https://github.com/coollabsio/coolify-examples/tree/main/nextjs
 
-FROM node:22-alpine AS base
+FROM node:24-alpine AS base
 
 # ========================================
 # Dependencies Stage
@@ -12,8 +12,8 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-RUN npm ci --network-timeout 600000 || \
-  (npm cache clean --force && npm ci --network-timeout 600000)
+RUN npm ci --network-timeout 600000 --ignore-scripts || \
+  (npm cache clean --force && npm ci --network-timeout 600000 --ignore-scripts)
 
 # ========================================
 # Builder Stage
