@@ -33,6 +33,17 @@ const NON_SUB_LEGACY_CATEGORY_FRAGMENTS = [
   "atm",
   "interest",
   "overdraft",
+  "gas station",
+];
+
+// Gas stations are recurring *purchases*, never subscriptions, and frequent
+// fill-ups fool the cadence detector into flagging them — the single biggest
+// false-positive source in practice. Match well-known chains by name. Kept
+// deliberately narrow to gas: retail/restaurants are NOT blanket-blocked here
+// because those can be real subscriptions (Walmart+, meal kits, etc.), and the
+// "needs review" flow already lets the user dismiss those.
+const GAS_STATION_NAME_PATTERNS: RegExp[] = [
+  /\b(chevron|shell|exxon|mobil|texaco|arco|conoco|phillips\s*66|citgo|valero|sunoco|marathon|speedway|circle\s*k|quiktrip|kwik\s*trip|wawa|sheetz|racetrac|casey'?s|sinclair|pilot|love'?s|flying\s*j)\b/i,
 ];
 
 // Match common payee strings that are very unlikely to be subscriptions.
@@ -74,6 +85,9 @@ export function looksLikeNonSubscription(input: NonSubInput): boolean {
 
   const haystack = `${input.merchantName ?? ""} ${input.name ?? ""}`.trim();
   if (haystack && NON_SUB_NAME_PATTERNS.some((re) => re.test(haystack))) {
+    return true;
+  }
+  if (haystack && GAS_STATION_NAME_PATTERNS.some((re) => re.test(haystack))) {
     return true;
   }
 
