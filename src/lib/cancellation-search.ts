@@ -79,6 +79,32 @@ function isUsefulResult(result: SearchResult): result is SearchResult & { link: 
   return !/(google|bing|yahoo)\.com$/.test(host);
 }
 
+// Third-party "cancel-for-a-fee" middlemen — sites that charge to mail a
+// "registered letter" or otherwise cancel on the user's behalf. They are never
+// the merchant's own cancellation page and must never surface as candidates
+// (project rule: never fabricate cancellation URLs; search-discovered links are
+// untrusted). Blocked by known host and by the tell-tale "letter + fee" pitch.
+const BLOCKED_CANCELLATION_HOSTS = new Set<string>([
+  "unsubby.com",
+  "unsubscribe.com",
+  "cancel-subscription.net",
+  "cancelmysubscription.com",
+  "canceleasy.com",
+  "donotpay.com",
+]);
+
+function isPaidCancellationMiddleman(
+  result: SearchResult & { link: string },
+): boolean {
+  const host = hostnameOf(result.link);
+  if (host && BLOCKED_CANCELLATION_HOSTS.has(host)) return true;
+  const text = `${result.title ?? ""} ${result.snippet ?? ""}`.toLowerCase();
+  const advertisesLetter =
+    /cancellation letter|(registered|certified) letter/.test(text);
+  const advertisesFee = /\$\s?\d|for a (small )?fee/.test(text);
+  return advertisesLetter && advertisesFee;
+}
+
 async function searchSerper(query: string, apiKey: string): Promise<SearchResult[]> {
   const response = await fetch("https://google.serper.dev/search", {
     method: "POST",
@@ -130,6 +156,7 @@ export async function findCancellationCandidatesForMerchant(
 
   const results = searchResults
     .filter(isUsefulResult)
+    .filter((result) => !isPaidCancellationMiddleman(result))
     .map((result) => ({
       result,
       confidence: scoreResult(merchant.name, merchant.domain, result),
