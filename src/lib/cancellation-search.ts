@@ -85,12 +85,14 @@ function isUsefulResult(result: SearchResult): result is SearchResult & { link: 
 // (project rule: never fabricate cancellation URLs; search-discovered links are
 // untrusted). Blocked by known host and by the tell-tale "letter + fee" pitch.
 const BLOCKED_CANCELLATION_HOSTS = new Set<string>([
+  "xpendy.com",
   "unsubby.com",
   "unsubscribe.com",
   "cancel-subscription.net",
   "cancelmysubscription.com",
   "canceleasy.com",
   "donotpay.com",
+  "dyme.app",
 ]);
 
 function isPaidCancellationMiddleman(
