@@ -9,10 +9,17 @@ interface CategoryOption {
   group: string | null;
 }
 
+interface Suggestion {
+  id: string;
+  name: string;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+}
+
 interface Props {
   transactionId: string;
   value: string | null;
   categories: CategoryOption[];
+  suggestion?: Suggestion | null;
 }
 
 interface CategorizeResponse {
@@ -23,6 +30,7 @@ export function TransactionCategorySelect({
   transactionId,
   value,
   categories,
+  suggestion,
 }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState(value ?? "");
@@ -63,6 +71,26 @@ export function TransactionCategorySelect({
           </option>
         ))}
       </select>
+      {!selected && suggestion ? (
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground">
+            Suggested: {suggestion.name}
+          </span>
+          {suggestion.confidence === "LOW" ? (
+            <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-yellow-900 dark:bg-yellow-500/15 dark:text-yellow-300">
+              needs review
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onChange(suggestion.id)}
+            disabled={pending}
+            className="rounded-md border px-2 py-0.5 hover:bg-muted disabled:opacity-50"
+          >
+            Confirm
+          </button>
+        </div>
+      ) : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
