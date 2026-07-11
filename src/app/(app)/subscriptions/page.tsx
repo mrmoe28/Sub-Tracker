@@ -53,18 +53,20 @@ function formatConfidence(value: number | null): string {
 
 // Pick the best cancellation/contact link we have for this merchant.
 // We never fabricate URLs — only render what's curated in the DB.
+// `kind: "cancel"` is the real cancellation/manage page (may require sign-in);
+// support/website are weaker fallbacks and are styled as such.
 function getCancelLink(
   m: Merchant | null,
-): { url: string; label: string } | null {
+): { url: string; label: string; kind: "cancel" | "support" | "website" } | null {
   if (!m) return null;
   if (m.cancellationUrl) {
-    return { url: m.cancellationUrl, label: "How to cancel" };
+    return { url: m.cancellationUrl, label: "Cancel page", kind: "cancel" };
   }
   if (m.supportUrl) {
-    return { url: m.supportUrl, label: "Vendor support" };
+    return { url: m.supportUrl, label: "Vendor support", kind: "support" };
   }
   if (m.website) {
-    return { url: m.website, label: "Vendor website" };
+    return { url: m.website, label: "Vendor website", kind: "website" };
   }
   return null;
 }
@@ -197,14 +199,23 @@ export default async function SubscriptionsPage() {
                           {(() => {
                             const link = getCancelLink(c.merchant);
                             if (!link) return null;
+                            const isCancel = link.kind === "cancel";
                             return (
                               <a
                                 href={link.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="mt-1 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                                className={cn(
+                                  "mt-1 inline-flex items-center gap-1 text-xs hover:underline",
+                                  isCancel
+                                    ? "font-medium text-blue-600 dark:text-blue-400"
+                                    : "text-muted-foreground",
+                                )}
                                 title={
-                                  c.merchant?.cancellationNotes ?? undefined
+                                  c.merchant?.cancellationNotes ??
+                                  (isCancel
+                                    ? "Opens the merchant's cancellation page (you may need to sign in)."
+                                    : undefined)
                                 }
                               >
                                 {link.label}

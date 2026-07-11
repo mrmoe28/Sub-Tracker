@@ -39,6 +39,25 @@ function hostnameOf(value: string): string | null {
   }
 }
 
+function pathnameOf(value: string): string {
+  try {
+    return new URL(value).pathname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+// Cancel-intent in the URL *path* is the single strongest signal that a link
+// takes the user straight to a cancellation flow rather than a help article.
+const CANCEL_PATH_RE =
+  /(^|\/)(cancel|unsubscribe|close[-_]?account|end[-_]?membership|cancellation|manage[-_]?(subscription|membership|plan))(\/|$|[-_?])/;
+
+// Pages that are the *opposite* of cancelling — signup/marketing/info. A merchant
+// name matches these just as well as a real cancel page, so without an explicit
+// penalty a "How to join" or pricing page can outscore the actual cancel flow.
+const ANTI_CANCEL_RE =
+  /\b(how to join|sign[- ]?up|signup|register|create (an )?account|pricing|deals?|coupons?|promo|discount|careers?|jobs|start (your )?(free )?trial|get started|download the app)\b/;
+
 function scoreResult(
   merchantName: string,
   merchantDomain: string | null,
@@ -48,25 +67,40 @@ function scoreResult(
   const snippet = result.snippet?.toLowerCase() ?? "";
   const url = result.link ?? "";
   const host = hostnameOf(url);
+  const path = pathnameOf(url);
   const haystack = `${title} ${snippet} ${url.toLowerCase()}`;
   const merchantWords = merchantName
     .toLowerCase()
     .split(/\s+/)
     .filter((w) => w.length > 2);
 
-  let score = 0.35;
+  let score = 0.25;
   if (merchantDomain && host === merchantDomain) score += 0.35;
   else if (merchantDomain && host?.endsWith(`.${merchantDomain}`)) score += 0.3;
-  if (haystack.includes("cancel")) score += 0.15;
-  if (haystack.includes("subscription") || haystack.includes("membership")) score += 0.1;
-  if (haystack.includes("billing") || haystack.includes("account")) score += 0.05;
+
+  // Cancel intent, strongest first: the URL path leads into a cancel flow, then
+  // "cancel" in the title, then anywhere in the result.
+  const hasCancelPath = CANCEL_PATH_RE.test(path);
+  if (hasCancelPath) score += 0.3;
+  if (title.includes("cancel")) score += 0.2;
+  else if (haystack.includes("cancel")) score += 0.1;
+
+  if (haystack.includes("subscription") || haystack.includes("membership")) score += 0.08;
+  if (haystack.includes("billing") || haystack.includes("account")) score += 0.04;
   if (merchantWords.some((word) => haystack.includes(word))) score += 0.1;
-  if (host?.includes("support.") || host?.includes("help.")) score += 0.05;
+  if (host?.includes("support.") || host?.includes("help.")) score += 0.03;
   if (typeof result.position === "number" && result.position <= 3) {
     score += 0.05;
   }
+
+  // Penalties: opposite-intent pages, forums/social, and any result that shows
+  // no cancel signal at all (a plain info/marketing page).
+  if (ANTI_CANCEL_RE.test(haystack) && !hasCancelPath) score -= 0.3;
   if (host && /(reddit|quora|facebook|x\.com|twitter|youtube)\.com$/.test(host)) {
     score -= 0.25;
+  }
+  if (!haystack.includes("cancel") && !haystack.includes("unsubscribe")) {
+    score -= 0.2;
   }
 
   return Math.max(0.05, Math.min(0.98, score));
@@ -156,6 +190,10 @@ export async function findCancellationCandidatesForMerchant(
     }
   }
 
+  // Below this, a result shows no real cancel intent — surfacing it just sends
+  // the user to an info/marketing page, which is worse than showing nothing.
+  const MIN_CONFIDENCE = 0.4;
+
   const results = searchResults
     .filter(isUsefulResult)
     .filter((result) => !isPaidCancellationMiddleman(result))
@@ -163,6 +201,7 @@ export async function findCancellationCandidatesForMerchant(
       result,
       confidence: scoreResult(merchant.name, merchant.domain, result),
     }))
+    .filter(({ confidence }) => confidence >= MIN_CONFIDENCE)
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, 3);
 

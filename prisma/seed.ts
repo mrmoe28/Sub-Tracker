@@ -80,12 +80,13 @@ const merchants: MerchantSeed[] = [
     domain: "amazon.com",
     website: "https://www.amazon.com",
     supportUrl: "https://www.amazon.com/help",
-    // No verified direct cancellation URL — Amazon routes through the
-    // logged-in account UI. Leave null and use notes.
+    // Canonical logged-in Prime management page. Not a one-click cancel — it
+    // opens the membership dashboard where "End Membership" lives.
+    cancellationUrl: "https://www.amazon.com/gp/primecentral",
     cancellationNotes:
-      "On Amazon: Account & Lists → Memberships & Subscriptions → " +
-      "Prime Membership → End Membership. Confirm in the cancellation flow.",
-    confidence: 0.6,
+      "Sign in, then on the Prime membership page: End Membership → " +
+      "confirm in the cancellation flow (Account & Lists → Prime Membership).",
+    confidence: 0.7,
   },
   {
     name: "Apple",
@@ -93,12 +94,13 @@ const merchants: MerchantSeed[] = [
     domain: "apple.com",
     website: "https://www.apple.com",
     supportUrl: "https://support.apple.com",
-    // Apple manages subs via OS settings on the user's device. We don't have
-    // a single canonical web cancel URL we're confident in, so leave null.
+    // Canonical web page for managing Apple subscriptions; redirects to Apple
+    // sign-in, then lists active subscriptions with a Cancel option.
+    cancellationUrl: "https://apps.apple.com/account/subscriptions",
     cancellationNotes:
-      "On iPhone/iPad: Settings → [your name] → Subscriptions. " +
-      "On Mac: App Store → click your name → View Information → Manage.",
-    confidence: 0.6,
+      "Sign in with your Apple ID, then select the subscription → Cancel. " +
+      "Also available on-device: Settings → [your name] → Subscriptions.",
+    confidence: 0.7,
   },
   {
     name: "Google",
@@ -106,12 +108,54 @@ const merchants: MerchantSeed[] = [
     domain: "google.com",
     website: "https://www.google.com",
     supportUrl: "https://support.google.com",
-    // Google has many products with separate cancel flows; no single URL.
+    // Google spreads subscriptions across products; this is the account-level
+    // Payments & subscriptions hub that links to each product's cancel flow.
+    cancellationUrl: "https://myaccount.google.com/payments-and-subscriptions",
     cancellationNotes:
-      "Sign in to your Google Account → Payments & subscriptions → " +
-      "Subscriptions. Specific products (YouTube, Google One) have their " +
-      "own cancel paths inside that page.",
-    confidence: 0.55,
+      "Sign in, then Payments & subscriptions → Subscriptions → pick the " +
+      "product → Cancel. YouTube / Google One have their own cancel paths.",
+    confidence: 0.6,
+  },
+  {
+    // Canonical form must match normalizeMerchantName() output ("Youtube"),
+    // otherwise ingested transactions won't map to this curated row.
+    name: "Youtube",
+    category: "Streaming",
+    domain: "youtube.com",
+    website: "https://www.youtube.com",
+    supportUrl: "https://support.google.com/youtube",
+    // Canonical logged-in page for YouTube Premium / channel memberships.
+    cancellationUrl: "https://www.youtube.com/paid_memberships",
+    cancellationNotes:
+      "Sign in, then on the Memberships page choose your membership → " +
+      "Manage → Deactivate/Cancel.",
+    confidence: 0.75,
+  },
+  {
+    name: "Hulu",
+    category: "Streaming",
+    domain: "hulu.com",
+    website: "https://www.hulu.com",
+    supportUrl: "https://help.hulu.com",
+    // Canonical logged-in account page; Cancel lives under "Your Subscription".
+    cancellationUrl: "https://secure.hulu.com/account",
+    cancellationNotes:
+      "Sign in, then Account → Your Subscription → Cancel.",
+    confidence: 0.75,
+  },
+  {
+    name: "Disney Plus",
+    category: "Streaming",
+    domain: "disneyplus.com",
+    website: "https://www.disneyplus.com",
+    supportUrl: "https://help.disneyplus.com",
+    // Canonical logged-in subscription page for Disney+ direct billing.
+    // (If billed via Apple/Google/Amazon, cancel there instead.)
+    cancellationUrl: "https://www.disneyplus.com/account/subscription",
+    cancellationNotes:
+      "Sign in, then Account → Subscription → Cancel Subscription. " +
+      "If you subscribed through Apple/Google/Amazon, cancel via that store.",
+    confidence: 0.7,
   },
 ];
 
