@@ -273,6 +273,15 @@ model Transaction {
   userCategoryNotes String? @db.Text
   categorizedAt DateTime?
 
+  // Deterministic auto-categorization suggestion. Separate from the manual
+  // userCategory* fields so re-syncs never overwrite a confirmed decision.
+  // Surfaced in the UI only while userCategoryId is null.
+  suggestedCategoryId   String?
+  suggestedCategoryName String?
+  suggestedConfidence   String?  // HIGH | MEDIUM | LOW
+  suggestedSource       String?  // MERCHANT | RECURRING | PFC
+  suggestedAt           DateTime?
+
   // Full Plaid transaction object as returned from /transactions/sync.
   raw Json?
 
@@ -282,13 +291,15 @@ model Transaction {
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   account      PlaidAccount?    @relation(fields: [accountId], references: [id], onDelete: SetNull)
   merchant     Merchant?        @relation(fields: [merchantId], references: [id], onDelete: SetNull)
-  userCategory TransactionCategory? @relation(fields: [userCategoryId], references: [id], onDelete: SetNull)
+  userCategory TransactionCategory? @relation("UserCategory", fields: [userCategoryId], references: [id], onDelete: SetNull)
+  suggestedCategory TransactionCategory? @relation("SuggestedCategory", fields: [suggestedCategoryId], references: [id], onDelete: SetNull)
   recurringStream RecurringStream? @relation(fields: [recurringStreamId], references: [id], onDelete: SetNull)
 
   @@index([userId, date])
   @@index([accountId, date])
   @@index([merchantId])
   @@index([userCategoryId])
+  @@index([userId, suggestedCategoryId])
   @@index([recurringStreamId])
   @@index([pfcPrimary])
 }
@@ -306,7 +317,8 @@ model TransactionCategory {
   updatedAt DateTime @updatedAt
 
   user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
+  transactions          Transaction[] @relation("UserCategory")
+  suggestedTransactions Transaction[] @relation("SuggestedCategory")
 
   @@unique([name])
   @@index([userId, sortOrder])
