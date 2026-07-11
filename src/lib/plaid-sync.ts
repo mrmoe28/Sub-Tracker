@@ -8,6 +8,10 @@ import type {
 import { prisma } from "./prisma";
 import { getPlaidClient } from "./plaid";
 import { ensureMerchant } from "./merchant";
+import {
+  computeSuggestedFields,
+  loadCategoryIdByName,
+} from "./apply-category-suggestion";
 import { decryptToken } from "./token-encryption";
 
 export interface SyncResult {
@@ -28,6 +32,7 @@ async function upsertTransaction(
   userId: string,
   txn: PlaidTransaction,
   accountIdByPlaidId: Map<string, string>,
+  categoryIdByName: Map<string, string>,
 ) {
   const merchant = await ensureMerchant(txn.merchant_name ?? txn.name);
   const accountDbId = accountIdByPlaidId.get(txn.account_id) ?? null;
@@ -54,10 +59,38 @@ async function upsertTransaction(
     raw: txn as unknown as object,
   };
 
+  // Best-effort suggestion. recurringStreamId is not known at sync time
+  // (recurring detection runs separately); the backfill route fills that in.
+  // A failure here must never abort the sync.
+  let suggested: ReturnType<typeof computeSuggestedFields> = null;
+  try {
+    suggested = computeSuggestedFields(
+      {
+        merchantName: data.merchantName,
+        name: data.name,
+        pfcPrimary: data.pfcPrimary,
+        pfcDetailed: data.pfcDetailed,
+        pfcConfidenceLevel: data.pfcConfidenceLevel,
+        recurringStreamId: null,
+      },
+      categoryIdByName,
+    );
+  } catch {
+    suggested = null;
+  }
+
+  const suggestionData = suggested ?? {
+    suggestedCategoryId: null,
+    suggestedCategoryName: null,
+    suggestedConfidence: null,
+    suggestedSource: null,
+    suggestedAt: null,
+  };
+
   await prisma.transaction.upsert({
     where: { plaidTransactionId: txn.transaction_id },
-    update: data,
-    create: { ...data, plaidTransactionId: txn.transaction_id },
+    update: { ...data, ...suggestionData },
+    create: { ...data, ...suggestionData, plaidTransactionId: txn.transaction_id },
   });
 }
 
@@ -86,6 +119,8 @@ export async function syncPlaidItemTransactions(
 
   const plaid = getPlaidClient();
 
+  const categoryIdByName = await loadCategoryIdByName(item.userId);
+
   let cursor = item.transactionsCursor ?? undefined;
   let hasMore = true;
   let added = 0;
@@ -102,11 +137,11 @@ export async function syncPlaidItemTransactions(
     const data = response.data;
 
     for (const txn of data.added) {
-      await upsertTransaction(item.userId, txn, accountIdByPlaidId);
+      await upsertTransaction(item.userId, txn, accountIdByPlaidId, categoryIdByName);
       added += 1;
     }
     for (const txn of data.modified) {
-      await upsertTransaction(item.userId, txn, accountIdByPlaidId);
+      await upsertTransaction(item.userId, txn, accountIdByPlaidId, categoryIdByName);
       modified += 1;
     }
     if (data.removed.length > 0) {
