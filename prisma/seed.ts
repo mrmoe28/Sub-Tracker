@@ -34,6 +34,8 @@ const transactionCategories = [
   { name: "Payroll", group: "Income", color: "#16a34a", icon: "wallet", sortOrder: 80 },
   { name: "Transfer", group: "Balance Sheet", color: "#64748b", icon: "repeat", sortOrder: 90 },
   { name: "Taxes", group: "Expense", color: "#b45309", icon: "receipt", sortOrder: 100 },
+  { name: "Job Materials", group: "Expense", color: "#ea580c", icon: "package", sortOrder: 35 },
+  { name: "Owner's Draw", group: "Balance Sheet", color: "#0d9488", icon: "banknote", sortOrder: 95 },
   { name: "Uncategorized", group: "Review", color: "#6b7280", icon: "circle-help", sortOrder: 999 },
 ];
 
