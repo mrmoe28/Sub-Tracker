@@ -30,13 +30,17 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/tsx ./node_modules/tsx
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/tsx ./node_modules/.bin/tsx
+# Ship the full builder node_modules (all deps + the generated Prisma client)
+# so `prisma migrate deploy` can run at container startup. The Next.js standalone
+# output ships only a pruned node_modules that omits the Prisma CLI's transitive
+# deps (e.g. @prisma/engines, effect), so we overlay the complete set here.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 USER nextjs
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
-CMD ["node", "server.js"]
+# Apply any pending DB migrations before the server accepts traffic, then start
+# the Next.js standalone server. Previously the CMD ran `node server.js` directly,
+# so `prisma migrate deploy` never ran in prod and schema changes had to be applied
+# by hand (which caused a P2022 outage on 2026-07-11).
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node server.js"]
