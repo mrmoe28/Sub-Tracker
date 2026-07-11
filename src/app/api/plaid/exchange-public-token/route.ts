@@ -112,6 +112,14 @@ export async function POST(req: NextRequest) {
       }
 
       return created;
+    }, {
+      // Prisma's default interactive-transaction timeout is 5s. Exchanging a
+      // token plus upserting the item and every account against a
+      // higher-latency production DB can exceed that (observed ~7.7s), which
+      // expires the transaction mid-loop and 500s the connect flow. Give it
+      // more headroom.
+      timeout: 20000,
+      maxWait: 10000,
     });
 
     return NextResponse.json({
