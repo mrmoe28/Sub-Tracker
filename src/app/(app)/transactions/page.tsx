@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { SyncTransactionsButton } from "@/components/sync-transactions-button";
+import { SuggestCategoriesButton } from "@/components/suggest-categories-button";
 import { TransactionCategorySelect } from "@/components/transaction-category-select";
 import {
   Card,
@@ -55,6 +56,9 @@ export default async function TransactionsPage({ searchParams }: Props) {
         pending: true,
         userCategoryId: true,
         userCategoryName: true,
+        suggestedCategoryId: true,
+        suggestedCategoryName: true,
+        suggestedConfidence: true,
         account: { select: { id: true, name: true, mask: true } },
       },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
@@ -139,7 +143,10 @@ export default async function TransactionsPage({ searchParams }: Props) {
             {PAGE_SIZE}.
           </p>
         </div>
-        <SyncTransactionsButton disabled={!hasAnyItems} />
+        <div className="flex flex-wrap items-start gap-2">
+          <SuggestCategoriesButton disabled={!hasAnyItems} />
+          <SyncTransactionsButton disabled={!hasAnyItems} />
+        </div>
       </div>
 
       <Card>
@@ -282,6 +289,19 @@ export default async function TransactionsPage({ searchParams }: Props) {
                           transactionId={t.id}
                           value={t.userCategoryId}
                           categories={categories}
+                          suggestion={
+                            t.userCategoryId == null && t.suggestedCategoryId
+                              ? {
+                                  id: t.suggestedCategoryId,
+                                  name: t.suggestedCategoryName ?? "",
+                                  confidence:
+                                    (t.suggestedConfidence as
+                                      | "HIGH"
+                                      | "MEDIUM"
+                                      | "LOW") ?? "LOW",
+                                }
+                              : null
+                          }
                         />
                         {t.userCategoryName ? (
                           <div className="mt-1 text-xs text-muted-foreground">
