@@ -72,7 +72,18 @@ export function looksLikeNonSubscription(input: NonSubInput): boolean {
   }
 
   if (input.pfcPrimary && NON_SUB_PFC_PRIMARY.has(input.pfcPrimary)) {
-    return true;
+    // Plaid sometimes mislabels a real card-based merchant subscription as
+    // TRANSFER_OUT (observed with "Google Workspace" POS debits). When there is
+    // a genuine merchant name that does not read like a P2P/bank transfer,
+    // trust the merchant and keep it for review instead of dropping it on the
+    // category alone. Every other non-sub category still excludes outright.
+    const rescuableTransferOut =
+      input.pfcPrimary === "TRANSFER_OUT" &&
+      !!input.merchantName?.trim() &&
+      !NON_SUB_NAME_PATTERNS.some((re) => re.test(input.merchantName ?? ""));
+    if (!rescuableTransferOut) {
+      return true;
+    }
   }
 
   const cats = input.category ?? [];
