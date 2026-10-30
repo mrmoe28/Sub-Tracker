@@ -1,6 +1,6 @@
 const APP_ORIGIN = "https://sub.lock28.com";
 
-async function discover(domain) {
+async function discover(domain, sourceTabId) {
   if (typeof domain !== "string" || !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(domain)) {
     throw new Error("Invalid merchant domain.");
   }
@@ -12,15 +12,12 @@ async function discover(domain) {
         (url.hostname === domain || url.hostname.endsWith(`.${domain}`));
     } catch { return false; }
   });
-  if (!tab) {
-    return { error: "No matching merchant tab is open in this Chrome profile. No session was copied." };
-  }
   const stores = await chrome.cookies.getAllCookieStores();
-  const store = stores.find((item) => item.tabIds.includes(tab.id));
+  const store = stores.find((item) => item.tabIds.includes(tab?.id ?? sourceTabId));
   if (!store) throw new Error("Chrome cookie store not found.");
   const cookies = await chrome.cookies.getAll({ domain, storeId: store.id });
-  if (!cookies.length) return { error: "The matching Chrome tab has no saved session." };
-  return { url: tab.url, cookies };
+  if (!cookies.length) return { error: "No saved Chrome session was found for this merchant in this browser profile." };
+  return { url: tab?.url ?? `https://${domain}/`, cookies };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
@@ -30,6 +27,6 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     return false;
   }
   if (message.action !== "discover") return false;
-  discover(message.domain).then(respond).catch((error) => respond({ error: error.message }));
+  discover(message.domain, sender.tab.id).then(respond).catch((error) => respond({ error: error.message }));
   return true;
 });

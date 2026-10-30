@@ -2,7 +2,7 @@
 
 Implemented on Master, 2026-10-30. This is connection infrastructure, not a claim of completed real-merchant cancellation.
 
-## Chrome Connect 0.2
+## Chrome Connect 0.2.1
 
 The signed-in Sub-Tracker page communicates with an isolated content script on `https://sub.lock28.com` only. The worker accepts messages only from that origin's tabs. For an owned subscription with a known merchant domain, it locates an HTTPS tab with that domain or a subdomain and reads cookies from that tab's cookie store. Cookies go directly from the isolated script to the authenticated, same-origin session endpoint; the page message receives only success or an error. No pairing token is needed for this path. Existing manual pairing remains as a fallback.
 
@@ -10,7 +10,9 @@ The import endpoint checks subscription ownership, site/domain agreement, and co
 
 Cancel for me is available for pending/confirmed subscriptions without a saved login. Missing sessions trigger Chrome discovery and then an email receipt search if Chrome discovery fails. Existing cancellation approval and screenshot-proof gates remain unchanged.
 
-Limitations: Chrome must have the merchant tab open; this version does not control the live Chrome cancellation flow, read Google's password vault, trigger autofill, resolve incorrect merchant domains, or automatically derive the billing provider from receipt content. Imported sessions can fail on device-bound authentication. These are still required for the broader autonomous-agent acceptance criteria.
+When no merchant tab is open, the worker uses the Sub-Tracker tab's Chrome cookie store and requests only the exact known merchant domain's cookies. This discovers saved site sessions without opening merchant tabs. A matching open tab takes precedence, including its cookie store.
+
+Limitations: this version does not control the live Chrome cancellation flow, read Google's password vault, trigger autofill, resolve incorrect merchant domains, or automatically derive the billing provider from receipt content. Imported sessions can fail on device-bound authentication. These are still required for the broader autonomous-agent acceptance criteria.
 
 ## Gmail
 

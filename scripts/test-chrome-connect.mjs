@@ -12,7 +12,7 @@ function fixture(tabs) {
     runtime: { onMessage: { addListener(value) { listener = value; } } },
     tabs: { async query() { return tabs; } },
     cookies: {
-      async getAllCookieStores() { return [{ id: "store-1", tabIds: [12] }]; },
+      async getAllCookieStores() { return [{ id: "store-1", tabIds: [12] }, { id: "app-store", tabIds: [1] }]; },
       async getAll(query) { requests.push(query); return [{ name: "session", value: "fixture" }]; },
     },
   };
@@ -40,12 +40,21 @@ test("discovery uses the matching tab's cookie store", async () => {
   assert.equal(browser.requests[0].storeId, "store-1");
 });
 
-test("lookalike domains and insecure tabs cannot supply a session", async () => {
+test("lookalike domains and insecure tabs cannot widen the cookie request", async () => {
   for (const url of ["https://merchant.example.evil.example", "https://notmerchant.example", "http://merchant.example"]) {
     const browser = fixture([{ id: 12, url }]);
-    assert.match((await browser.send({ action: "discover", domain: "merchant.example" })).error, /No matching/);
-    assert.equal(browser.requests.length, 0);
+    const result = await browser.send({ action: "discover", domain: "merchant.example" });
+    assert.equal(result.url, "https://merchant.example/");
+    assert.equal(browser.requests[0].domain, "merchant.example");
+    assert.equal(browser.requests[0].storeId, "app-store");
   }
+});
+
+test("saved Chrome cookies can be discovered without an open merchant tab", async () => {
+  const browser = fixture([]);
+  const result = await browser.send({ action: "discover", domain: "merchant.example" });
+  assert.equal(result.cookies[0].value, "fixture");
+  assert.equal(browser.requests[0].storeId, "app-store");
 });
 
 test("unknown actions and invalid domains do not read cookies", async () => {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sub-Tracker Connect",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Send the current site's signed-in session to Sub-Tracker so it can find your cancel page as you.",
   "permissions": ["cookies", "activeTab", "storage", "tabs"],
   "host_permissions": ["<all_urls>"],

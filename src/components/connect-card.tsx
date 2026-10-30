@@ -99,7 +99,7 @@ export function ConnectCard({ sessions, hasToken }: Props) {
           </li>
           <li>Version 0.2 connects automatically when you use Cancel for me in this Chrome profile. No pairing token is needed for that workflow.</li>
           <li>
-            Leave your signed-in merchant tab open. Cancel for me checks matching Chrome tabs before asking for a login. The popup below is a legacy manual fallback.
+            Cancel for me checks matching Chrome tabs and saved site sessions in this profile before asking for a login. The popup below is a legacy manual fallback.
           </li>
         </ol>
         <div className="flex flex-wrap items-center gap-2">

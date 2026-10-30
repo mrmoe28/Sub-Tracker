@@ -35,7 +35,7 @@ try {
   await merchant.goto("https://merchant.example/account");
   const app = await context.newPage();
   await app.goto("https://sub.lock28.com/subscriptions");
-  const result = await app.evaluate(() => new Promise((resolve, reject) => {
+  const discover = () => app.evaluate(() => new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Extension bridge timed out")), 15000);
     window.addEventListener("message", (event) => {
       if (event.data?.channel === "subtracker-response" && event.data.id === "fixture-request") {
@@ -45,11 +45,18 @@ try {
     });
     window.postMessage({ channel: "subtracker-request", action: "discover", candidateId: "fixture-subscription", id: "fixture-request" }, location.origin);
   }));
+  const result = await discover();
   assert.equal(result.saved, true, JSON.stringify(result));
   assert.equal(result.cookies, undefined);
   assert.equal(captured, true);
+  await merchant.close();
+  captured = false;
+  const savedSession = await discover();
+  assert.equal(savedSession.saved, true, JSON.stringify(savedSession));
+  assert.equal(savedSession.cookies, undefined);
+  assert.equal(captured, true);
   await app.screenshot({ path: "/tmp/subtracker-connect-browser-fixture.png" });
-  console.log("PASS: actual Chromium extension discovers matching tab, imports session, and keeps cookies out of page messages.");
+  console.log("PASS: actual Chromium extension imports matching-tab and closed-tab sessions without exposing cookies in page messages.");
 } finally {
   await context.close();
   await rm(profile, { recursive: true, force: true });
