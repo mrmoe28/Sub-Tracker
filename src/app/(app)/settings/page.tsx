@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ConnectCard } from "@/components/connect-card";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 
@@ -24,6 +25,15 @@ export default async function SettingsPage() {
       plaidItem: { select: { institutionName: true } },
     },
     orderBy: { name: "asc" },
+  });
+  const sessions = await prisma.browserSession.findMany({
+    where: { userId: user.id },
+    select: { domain: true, cookieCount: true, capturedAt: true, lastUseOk: true },
+    orderBy: { capturedAt: "desc" },
+  });
+  const tokenRow = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { connectTokenHash: true },
   });
 
   return (
@@ -83,6 +93,27 @@ export default async function SettingsPage() {
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cancel finder logins</CardTitle>
+          <CardDescription>
+            Let the finder sign in as you so it can land on each merchant&apos;s cancel
+            page. It never clicks Cancel for you.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ConnectCard
+            hasToken={Boolean(tokenRow?.connectTokenHash)}
+            sessions={sessions.map((s) => ({
+              domain: s.domain,
+              cookieCount: s.cookieCount,
+              capturedAt: s.capturedAt.toISOString(),
+              lastUseOk: s.lastUseOk,
+            }))}
+          />
         </CardContent>
       </Card>
     </div>

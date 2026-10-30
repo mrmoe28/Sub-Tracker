@@ -46,6 +46,9 @@ model User {
   transactionCategories TransactionCategory[]
   invitesSent   Invite[]  @relation("InviteInvitedBy")
   merchantLogins MerchantLogin[]
+  browserSessions BrowserSession[]
+  // SHA-256 of the pairing token the Connect extension sends as a bearer.
+  connectTokenHash String?
 }
 
 model Account {
@@ -543,4 +546,30 @@ model MerchantLogin {
 
   @@unique([userId, merchantId])
   @@index([merchantId])
+}
+
+// Live browser session for a site, captured from the user's own Chrome by the
+// Sub-Tracker Connect extension. Cookies JSON is AES-256-GCM encrypted with
+// TOKEN_ENCRYPTION_KEY. Lets the hunt run as the user with 2FA already cleared.
+model BrowserSession {
+  id     String @id @default(cuid())
+  userId String
+  // Registrable domain, e.g. "hulu.com".
+  domain String
+
+  cookiesCiphertext    Bytes
+  cookiesIv            Bytes
+  cookiesAuthTag       Bytes
+  encryptionKeyVersion Int   @default(1)
+  cookieCount          Int   @default(0)
+  // URL of the tab the session was captured from.
+  sourceUrl String?
+
+  capturedAt DateTime @default(now())
+  lastUsedAt DateTime?
+  lastUseOk  Boolean?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, domain])
 }

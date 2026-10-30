@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { getCurrentUser } from "@/lib/current-user";
+import { hostnameOf, registrableDomain } from "@/lib/cancellation-rank";
 import { prisma } from "@/lib/prisma";
 import { cn, formatCurrency } from "@/lib/utils";
 
@@ -89,6 +90,16 @@ function suggestionLabel(kind: string | null): string {
 export default async function SubscriptionsPage() {
   const user = await getCurrentUser();
   const hasItems = (await prisma.plaidItem.count({ where: { userId: user.id } })) > 0;
+  const sessions = await prisma.browserSession.findMany({
+    where: { userId: user.id },
+    select: { domain: true, capturedAt: true, lastUseOk: true },
+  });
+  const sessionByDomain = new Map(sessions.map((s) => [s.domain, s]));
+  const sessionFor = (m: Merchant | null) => {
+    if (!m) return null;
+    const host = m.domain ?? (m.website ? hostnameOf(m.website) : null);
+    return host ? sessionByDomain.get(registrableDomain(host.toLowerCase())) ?? null : null;
+  };
 
   const candidates = await prisma.subscriptionCandidate.findMany({
     where: { userId: user.id },
@@ -323,6 +334,7 @@ export default async function SubscriptionsPage() {
                             loginUsername={
                               c.merchant?.logins[0]?.username ?? null
                             }
+                            hasSession={Boolean(sessionFor(c.merchant))}
                             lastLoginStatus={
                               c.merchant?.logins[0]?.lastAttemptStatus ?? null
                             }

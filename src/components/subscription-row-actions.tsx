@@ -15,6 +15,8 @@ interface Props {
   pendingCancellationCandidateId?: string | null;
   // Stored merchant login for this user, if any.
   loginUsername?: string | null;
+  // A live browser session sent from Chrome for this merchant's domain.
+  hasSession?: boolean;
   lastLoginStatus?: string | null;
   lastLoginNote?: string | null;
   status:
@@ -47,6 +49,7 @@ export function SubscriptionRowActions({
   hasCancelUrl,
   pendingCancellationCandidateId,
   loginUsername,
+  hasSession,
   lastLoginStatus,
   lastLoginNote,
   status,
@@ -61,6 +64,7 @@ export function SubscriptionRowActions({
   const [password, setPassword] = useState("");
   const [loginUrl, setLoginUrl] = useState("");
   const hasLogin = Boolean(loginUsername);
+  const canHunt = hasLogin || Boolean(hasSession);
 
   async function decide(action: Action) {
     setError(null);
@@ -209,16 +213,20 @@ export function SubscriptionRowActions({
             Find link
           </Button>
         )}
-        {hasLogin ? (
+        {canHunt ? (
           <Button
             size="sm"
             variant="outline"
             disabled={pending || Boolean(loading)}
             onClick={loginAndFind}
-            title={`Sign in as ${loginUsername} and locate the cancel page`}
+            title={
+              hasSession
+                ? "Use your saved browser session and locate the cancel page"
+                : `Sign in as ${loginUsername} and locate the cancel page`
+            }
           >
             <LogIn className="h-3.5 w-3.5" />
-            {loading === "hunt" ? "Signing in…" : "Log in & find"}
+            {loading === "hunt" ? "Signing in…" : hasSession ? "Find as me" : "Log in & find"}
           </Button>
         ) : null}
         <Button

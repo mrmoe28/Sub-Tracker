@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font: 13px system-ui, sans-serif; width: 300px; margin: 0; padding: 12px; color: #111; }
+      h1 { font-size: 14px; margin: 0 0 8px; }
+      label { display: block; font-size: 11px; color: #555; margin-top: 8px; }
+      input { width: 100%; box-sizing: border-box; padding: 5px 6px; margin-top: 2px; font: inherit; }
+      button { width: 100%; margin-top: 10px; padding: 7px; font: inherit; cursor: pointer; }
+      #send { background: #111; color: #fff; border: 0; border-radius: 4px; }
+      #send:disabled { opacity: .5; cursor: default; }
+      #site { font-weight: 600; }
+      #status { margin-top: 8px; min-height: 16px; font-size: 12px; }
+      .ok { color: #047857; } .err { color: #b91c1c; }
+      details { margin-top: 8px; } summary { cursor: pointer; font-size: 12px; color: #555; }
+    </style>
+  </head>
+  <body>
+    <h1>Sub-Tracker Connect</h1>
+    <div>Current site: <span id="site">…</span></div>
+    <button id="send">Send this site's session</button>
+    <div id="status"></div>
+    <details>
+      <summary>Settings</summary>
+      <label>Server
+        <input id="server" type="url" placeholder="https://sub.lock28.com" />
+      </label>
+      <label>Pairing token (from Settings in Sub-Tracker)
+        <input id="token" type="password" placeholder="stc_…" />
+      </label>
+      <button id="save">Save</button>
+    </details>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -13,6 +13,7 @@ import {
   type Blocker,
 } from "./cancellation-browser-heuristics";
 import { registrableDomain } from "./cancellation-rank";
+import type { SessionCookie } from "./browser-session";
 
 export type HuntStatus =
   | "found_cancel"
@@ -21,6 +22,7 @@ export type HuntStatus =
   | "needs_2fa"
   | "captcha"
   | "no_login_form"
+  | "session_expired"
   | "not_found"
   | "error";
 
@@ -37,9 +39,12 @@ export interface HuntResult {
 export interface HuntInput {
   merchantName: string;
   domain: string;
-  username: string;
-  password: string;
+  username?: string | null;
+  password?: string | null;
   loginUrl?: string | null;
+  // Live browser cookies captured from the user's own signed-in session
+  // (via the Connect extension). Tried before the username/password path.
+  cookies?: SessionCookie[];
   // Known first-party pages (from the search step) to seed the crawl.
   seedUrls?: string[];
 }
@@ -102,17 +107,28 @@ async function settle(page: Page): Promise<void> {
 }
 
 async function goto(page: Page, url: string): Promise<boolean> {
-  try {
-    const res = await page.goto(url, {
-      waitUntil: "domcontentloaded",
-      timeout: NAV_TIMEOUT_MS,
-    });
-    if (res && res.status() >= 400 && res.status() !== 403) return false;
-    await settle(page);
-    return true;
-  } catch {
-    return false;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: NAV_TIMEOUT_MS,
+      });
+      if (res && res.status() >= 400 && res.status() !== 403) return false;
+      await settle(page);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message.split("\n")[0] : String(err);
+      debug("goto error", url, message);
+      // A redirect from the previous page can still be in flight (e.g. a dead
+      // session cookie bouncing /account -> /login). Let it land, then retry once.
+      if (attempt === 0 && /interrupted by another navigation/i.test(message)) {
+        await settle(page);
+        continue;
+      }
+      return false;
+    }
   }
+  return false;
 }
 
 async function firstVisible(
@@ -285,6 +301,57 @@ export async function loginAndFindCancelPage(input: HuntInput): Promise<HuntResu
     });
     const page = await context.newPage();
 
+    // 0. Reuse the user's live session when we have one: no password typed,
+    //    2FA already cleared in their own browser.
+    let viaSession = false;
+    if (input.cookies?.length) {
+      await context.addCookies(input.cookies);
+      const starts = [
+        ...(input.seedUrls ?? []).filter((u) => /account|billing|subscription|manage|plan/i.test(u)),
+        ...ACCOUNT_PATHS.slice(0, 4).map((p) => `https://www.${domain}${p}`),
+        ...ACCOUNT_PATHS.slice(0, 4).map((p) => `https://${domain}${p}`),
+      ];
+      let tried = 0;
+      let lastUrl: string | null = null;
+      for (const url of starts) {
+        if (Date.now() > deadline || tried >= 4) break;
+        if (!(await goto(page, url))) continue;
+        visited += 1;
+        tried += 1;
+        lastUrl = page.url();
+        const onLogin =
+          /login|signin|sign-in|sign_in|auth|session\/new/i.test(page.url()) ||
+          Boolean(await firstVisible(page, [PASSWORD_SELECTOR]));
+        debug("session check", page.url(), "onLogin", onLogin);
+        if (!onLogin) {
+          viaSession = true;
+          break;
+        }
+      }
+      if (!viaSession && !(input.username && input.password)) {
+        return result(
+          "session_expired",
+          `${input.merchantName} no longer accepts the saved browser session (it expired or was signed out). Open ${domain} in Chrome while signed in and send the session again, or add a password login.`,
+          { url: lastUrl, pagesVisited: visited },
+        );
+      }
+      if (!viaSession) {
+        // Drop the dead session before typing a password so stale cookies
+        // can't keep bouncing the login page, and let any pending redirect finish.
+        await context.clearCookies();
+        await settle(page);
+        debug("session expired; falling back to password login");
+      }
+    }
+
+    if (!viaSession) {
+    const username = input.username;
+    const password = input.password;
+    if (!username || !password) {
+      return result("error", `No saved login or browser session for ${input.merchantName}.`, {
+        pagesVisited: visited,
+      });
+    }
     // 1. Reach a login form.
     const loginUrls = [
       ...(input.loginUrl ? [input.loginUrl] : []),
@@ -297,10 +364,13 @@ export async function loginAndFindCancelPage(input: HuntInput): Promise<HuntResu
     for (const url of loginUrls) {
       if (Date.now() > deadline) break;
       if (attempts >= MAX_LOGIN_ATTEMPTS) break;
-      if (!(await goto(page, url))) continue;
+      const ok = await goto(page, url);
+      debug("login goto", url, "ok", ok);
+      if (!ok) continue;
       visited += 1;
       attempts += 1;
-      loginOutcome = await submitLogin(page, input.username, input.password);
+      loginOutcome = await submitLogin(page, username, password);
+      debug("login outcome", loginOutcome, page.url());
       if (loginOutcome !== "no_form") break;
       // Some sites hide the form behind a "Sign in" link on the landing page.
       const signin = await firstVisible(page, [
@@ -313,7 +383,7 @@ export async function loginAndFindCancelPage(input: HuntInput): Promise<HuntResu
       if (signin) {
         await signin.click({ timeout: 5_000 }).catch(() => undefined);
         await settle(page);
-        loginOutcome = await submitLogin(page, input.username, input.password);
+        loginOutcome = await submitLogin(page, username, password);
         if (loginOutcome !== "no_form") break;
       }
     }
@@ -372,6 +442,7 @@ export async function loginAndFindCancelPage(input: HuntInput): Promise<HuntResu
         { url: page.url(), pagesVisited: visited },
       );
     }
+    }
 
     // 3. Crawl the account area, best links first.
     const queue: { url: string; score: number }[] = [];
@@ -396,7 +467,7 @@ export async function loginAndFindCancelPage(input: HuntInput): Promise<HuntResu
       if (cancel) {
         return result(
           "found_cancel",
-          `Signed in to ${input.merchantName} and found "${cancel.text}" on this page.`,
+          `${viaSession ? "Used your browser session for" : "Signed in to"} ${input.merchantName} and found "${cancel.text}" on this page.`,
           { url: cancel.href ?? page.url(), controlText: cancel.text, pagesVisited: visited },
         );
       }
