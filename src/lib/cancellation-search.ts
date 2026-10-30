@@ -1,13 +1,15 @@
 import "server-only";
 
 import { prisma } from "./prisma";
-
-interface SearchResult {
-  title?: string;
-  link?: string;
-  snippet?: string;
-  position?: number;
-}
+import {
+  extractCancelPhone,
+  hostnameOf,
+  inferMerchantDomain,
+  rankCandidates,
+  type CancelKind,
+  type RankedCandidate,
+  type SearchResult,
+} from "./cancellation-rank";
 
 interface SerperResponse {
   organic?: SearchResult[];
@@ -20,7 +22,15 @@ export interface CancellationSearchResult {
     url: string;
     title: string | null;
     confidence: number | null;
+    kind: CancelKind;
+    firstParty: boolean;
   }>;
+  // Set when the merchant's own site was found but it has no cancel page —
+  // e.g. insurers that only cancel by phone.
+  cancelPhone: string | null;
+  merchantDomain: string | null;
+  // Human-readable outcome shown under the row.
+  message: string;
 }
 
 function requireSerperKey(): string {
@@ -29,88 +39,6 @@ function requireSerperKey(): string {
     throw new Error("Missing SERPER_API_KEY in .env");
   }
   return key;
-}
-
-function hostnameOf(value: string): string | null {
-  try {
-    return new URL(value).hostname.replace(/^www\./, "").toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-function pathnameOf(value: string): string {
-  try {
-    return new URL(value).pathname.toLowerCase();
-  } catch {
-    return "";
-  }
-}
-
-// Cancel-intent in the URL *path* is the single strongest signal that a link
-// takes the user straight to a cancellation flow rather than a help article.
-const CANCEL_PATH_RE =
-  /(^|\/)(cancel|unsubscribe|close[-_]?account|end[-_]?membership|cancellation|manage[-_]?(subscription|membership|plan))(\/|$|[-_?])/;
-
-// Pages that are the *opposite* of cancelling — signup/marketing/info. A merchant
-// name matches these just as well as a real cancel page, so without an explicit
-// penalty a "How to join" or pricing page can outscore the actual cancel flow.
-const ANTI_CANCEL_RE =
-  /\b(how to join|sign[- ]?up|signup|register|create (an )?account|pricing|deals?|coupons?|promo|discount|careers?|jobs|start (your )?(free )?trial|get started|download the app)\b/;
-
-function scoreResult(
-  merchantName: string,
-  merchantDomain: string | null,
-  result: SearchResult,
-): number {
-  const title = result.title?.toLowerCase() ?? "";
-  const snippet = result.snippet?.toLowerCase() ?? "";
-  const url = result.link ?? "";
-  const host = hostnameOf(url);
-  const path = pathnameOf(url);
-  const haystack = `${title} ${snippet} ${url.toLowerCase()}`;
-  const merchantWords = merchantName
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 2);
-
-  let score = 0.25;
-  if (merchantDomain && host === merchantDomain) score += 0.35;
-  else if (merchantDomain && host?.endsWith(`.${merchantDomain}`)) score += 0.3;
-
-  // Cancel intent, strongest first: the URL path leads into a cancel flow, then
-  // "cancel" in the title, then anywhere in the result.
-  const hasCancelPath = CANCEL_PATH_RE.test(path);
-  if (hasCancelPath) score += 0.3;
-  if (title.includes("cancel")) score += 0.2;
-  else if (haystack.includes("cancel")) score += 0.1;
-
-  if (haystack.includes("subscription") || haystack.includes("membership")) score += 0.08;
-  if (haystack.includes("billing") || haystack.includes("account")) score += 0.04;
-  if (merchantWords.some((word) => haystack.includes(word))) score += 0.1;
-  if (host?.includes("support.") || host?.includes("help.")) score += 0.03;
-  if (typeof result.position === "number" && result.position <= 3) {
-    score += 0.05;
-  }
-
-  // Penalties: opposite-intent pages, forums/social, and any result that shows
-  // no cancel signal at all (a plain info/marketing page).
-  if (ANTI_CANCEL_RE.test(haystack) && !hasCancelPath) score -= 0.3;
-  if (host && /(reddit|quora|facebook|x\.com|twitter|youtube)\.com$/.test(host)) {
-    score -= 0.25;
-  }
-  if (!haystack.includes("cancel") && !haystack.includes("unsubscribe")) {
-    score -= 0.2;
-  }
-
-  return Math.max(0.05, Math.min(0.98, score));
-}
-
-function isUsefulResult(result: SearchResult): result is SearchResult & { link: string } {
-  if (!result.link) return false;
-  const host = hostnameOf(result.link);
-  if (!host) return false;
-  return !/(google|bing|yahoo)\.com$/.test(host);
 }
 
 // Third-party "cancel-for-a-fee" middlemen — sites that charge to mail a
@@ -129,9 +57,8 @@ const BLOCKED_CANCELLATION_HOSTS = new Set<string>([
   "dyme.app",
 ]);
 
-function isPaidCancellationMiddleman(
-  result: SearchResult & { link: string },
-): boolean {
+function isPaidCancellationMiddleman(result: SearchResult): boolean {
+  if (!result.link) return false;
   const host = hostnameOf(result.link);
   if (host && BLOCKED_CANCELLATION_HOSTS.has(host)) return true;
   const text = `${result.title ?? ""} ${result.snippet ?? ""}`.toLowerCase();
@@ -149,10 +76,7 @@ async function searchSerper(query: string, apiKey: string): Promise<SearchResult
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({
-      q: query,
-      num: 10,
-    }),
+    body: JSON.stringify({ q: query, num: 10 }),
     cache: "no-store",
   });
   if (!response.ok) {
@@ -162,73 +86,161 @@ async function searchSerper(query: string, apiKey: string): Promise<SearchResult
   return data.organic ?? [];
 }
 
+// A candidate we show must actually load. Dead links (404/410/5xx, DNS
+// failures, timeouts) are dropped so the user never clicks into a wall.
+// Anything that answers — including 401/403 sign-in walls — is kept.
+async function urlIsLive(url: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  const headers = {
+    "User-Agent":
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    Accept: "text/html,application/xhtml+xml,*/*;q=0.8",
+  };
+  try {
+    let res = await fetch(url, {
+      method: "HEAD",
+      redirect: "follow",
+      headers,
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (res.status === 405 || res.status === 501) {
+      res = await fetch(url, {
+        method: "GET",
+        redirect: "follow",
+        headers,
+        signal: controller.signal,
+        cache: "no-store",
+      });
+    }
+    return res.status < 400 || res.status === 401 || res.status === 403;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function filterLive(candidates: RankedCandidate[]): Promise<RankedCandidate[]> {
+  const checks = await Promise.all(candidates.map((c) => urlIsLive(c.url)));
+  return candidates.filter((_, i) => checks[i]);
+}
+
+function buildQueries(name: string, domain: string | null): string[] {
+  const queries = [
+    `how to cancel ${name}`,
+    `${name} cancel subscription OR cancel membership OR cancel policy`,
+  ];
+  if (domain) {
+    queries.push(`site:${domain} cancel`);
+    queries.push(`site:${domain} account OR billing OR "my account" OR "my policy"`);
+  } else {
+    queries.push(`${name} official site account login`);
+  }
+  return queries;
+}
+
+function describe(
+  merchantName: string,
+  candidates: RankedCandidate[],
+  cancelPhone: string | null,
+  domain: string | null,
+): string {
+  const best = candidates[0];
+  if (best?.kind === "cancel" && best.firstParty) {
+    return `Found ${merchantName}'s cancellation page. Approve it to attach it to this subscription.`;
+  }
+  if (best?.firstParty) {
+    const where = best.kind === "manage" ? "account page" : "contact page";
+    const phone = cancelPhone ? ` To cancel by phone, call ${cancelPhone}.` : "";
+    return `${merchantName} has no public cancel page; the closest is their ${where} (cancel lives behind sign-in).${phone}`;
+  }
+  if (cancelPhone) {
+    return `${merchantName} appears to cancel by phone only: call ${cancelPhone}.`;
+  }
+  if (best) {
+    return `No ${merchantName} cancel page found — only third-party how-to articles. Review before approving.`;
+  }
+  return domain
+    ? `Nothing usable found for ${merchantName} (${domain}). Try their account page or call support.`
+    : `Nothing usable found for ${merchantName}. The merchant's website could not be identified.`;
+}
+
 export async function findCancellationCandidatesForMerchant(
   merchantId: string,
 ): Promise<CancellationSearchResult> {
   const merchant = await prisma.merchant.findUniqueOrThrow({
     where: { id: merchantId },
-    select: { id: true, name: true, domain: true },
+    select: { id: true, name: true, domain: true, website: true },
   });
 
   const key = requireSerperKey();
-  const queries = [
-    `${merchant.name} official cancel subscription`,
-    `${merchant.name} cancel membership billing support`,
-    merchant.domain
-      ? `site:${merchant.domain} cancel subscription OR manage billing`
-      : `${merchant.name} manage subscription account`,
-  ];
+  const knownDomain =
+    merchant.domain ?? (merchant.website ? hostnameOf(merchant.website) : null);
 
   const seen = new Set<string>();
   const searchResults: SearchResult[] = [];
-  for (const query of queries) {
-    const rows = await searchSerper(query, key);
-    for (const row of rows) {
-      if (!row.link || seen.has(row.link)) continue;
-      seen.add(row.link);
-      searchResults.push(row);
+  const collect = async (queries: string[]) => {
+    for (const query of queries) {
+      const rows = await searchSerper(query, key);
+      for (const row of rows) {
+        if (!row.link || seen.has(row.link)) continue;
+        if (isPaidCancellationMiddleman(row)) continue;
+        seen.add(row.link);
+        searchResults.push(row);
+      }
+    }
+  };
+
+  await collect(buildQueries(merchant.name, knownDomain));
+
+  // Two-pass: if we had no domain on file, infer it from the first pass and
+  // run the site-scoped queries, which are the ones that find the real
+  // account/cancel pages.
+  let domain = knownDomain;
+  if (!domain) {
+    domain = inferMerchantDomain(merchant.name, searchResults);
+    if (domain) {
+      await collect(buildQueries(merchant.name, domain).filter((q) => q.startsWith("site:")));
+      await prisma.merchant.update({
+        where: { id: merchant.id },
+        data: { domain },
+      });
     }
   }
 
-  // Below this, a result shows no real cancel intent — surfacing it just sends
-  // the user to an info/marketing page, which is worse than showing nothing.
-  const MIN_CONFIDENCE = 0.4;
+  const ranked = rankCandidates(merchant.name, domain, searchResults, 5);
+  const live = (await filterLive(ranked)).slice(0, 3);
+  const cancelPhone = extractCancelPhone(searchResults);
 
-  const results = searchResults
-    .filter(isUsefulResult)
-    .filter((result) => !isPaidCancellationMiddleman(result))
-    .map((result) => ({
-      result,
-      confidence: scoreResult(merchant.name, merchant.domain, result),
-    }))
-    .filter(({ confidence }) => confidence >= MIN_CONFIDENCE)
-    .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 3);
+  // Fresh search supersedes earlier pending suggestions for this merchant so
+  // the row shows the current best guess, not whatever was found last time.
+  await prisma.cancellationCandidate.deleteMany({
+    where: { merchantId: merchant.id, status: "PENDING_REVIEW" },
+  });
 
   let created = 0;
-  const candidates = [];
-  for (const { result, confidence } of results) {
+  const candidates: CancellationSearchResult["candidates"] = [];
+  for (const c of live) {
     const row = await prisma.cancellationCandidate.upsert({
-      where: {
-        merchantId_url: {
-          merchantId: merchant.id,
-          url: result.link,
-        },
-      },
+      where: { merchantId_url: { merchantId: merchant.id, url: c.url } },
       update: {
-        title: result.title ?? null,
-        snippet: result.snippet ?? null,
+        title: c.title,
+        snippet: c.snippet,
         source: "serper",
-        confidence,
+        kind: c.kind,
+        confidence: c.confidence,
         status: "PENDING_REVIEW",
       },
       create: {
         merchantId: merchant.id,
-        url: result.link,
-        title: result.title ?? null,
-        snippet: result.snippet ?? null,
+        url: c.url,
+        title: c.title,
+        snippet: c.snippet,
         source: "serper",
-        confidence,
+        kind: c.kind,
+        confidence: c.confidence,
       },
     });
     created += 1;
@@ -237,8 +249,24 @@ export async function findCancellationCandidatesForMerchant(
       url: row.url,
       title: row.title,
       confidence: row.confidence,
+      kind: c.kind,
+      firstParty: c.firstParty,
     });
   }
 
-  return { created, candidates };
+  if (cancelPhone && live.length === 0) {
+    const note = `Cancel by phone: ${cancelPhone}`;
+    await prisma.merchant.update({
+      where: { id: merchant.id },
+      data: { cancellationNotes: note },
+    });
+  }
+
+  return {
+    created,
+    candidates,
+    cancelPhone,
+    merchantDomain: domain,
+    message: describe(merchant.name, live, cancelPhone, domain),
+  };
 }

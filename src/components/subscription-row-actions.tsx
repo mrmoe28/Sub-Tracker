@@ -26,6 +26,8 @@ interface DecideResponse {
 
 interface ActionResponse {
   error?: string;
+  message?: string;
+  created?: number;
 }
 
 export function SubscriptionRowActions({
@@ -38,6 +40,7 @@ export function SubscriptionRowActions({
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function decide(action: Action) {
     setError(null);
@@ -57,6 +60,7 @@ export function SubscriptionRowActions({
   async function findCancellation() {
     setLoading("find");
     setError(null);
+    setNotice(null);
     try {
       const res = await fetch(
         `/api/subscriptions/${candidateId}/find-cancellation`,
@@ -64,6 +68,9 @@ export function SubscriptionRowActions({
       );
       const data = (await res.json()) as ActionResponse;
       if (!res.ok) throw new Error(data.error ?? "Search failed");
+      setNotice(
+        data.message ?? (data.created ? null : "Nothing usable found."),
+      );
       startTransition(() => router.refresh());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Search failed");
@@ -153,6 +160,11 @@ export function SubscriptionRowActions({
         </Button>
       </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {notice ? (
+        <p className="max-w-[36ch] text-right text-xs text-muted-foreground">
+          {notice}
+        </p>
+      ) : null}
     </div>
   );
 }

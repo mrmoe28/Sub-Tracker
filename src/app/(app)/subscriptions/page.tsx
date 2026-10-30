@@ -71,6 +71,21 @@ function getCancelLink(
   return null;
 }
 
+function suggestionLabel(kind: string | null): string {
+  switch (kind) {
+    case "cancel":
+      return "Suggested cancel page";
+    case "manage":
+      return "Suggested account page";
+    case "contact":
+      return "Suggested contact page";
+    case "howto":
+      return "How-to article";
+    default:
+      return "Suggested";
+  }
+}
+
 export default async function SubscriptionsPage() {
   const user = await getCurrentUser();
   const hasItems = (await prisma.plaidItem.count({ where: { userId: user.id } })) > 0;
@@ -234,7 +249,10 @@ export default async function SubscriptionsPage() {
                                 c.merchant.cancellationCandidates[0].url
                               }
                             >
-                              Suggested:{" "}
+                              {suggestionLabel(
+                                c.merchant.cancellationCandidates[0].kind,
+                              )}
+                              {": "}
                               {c.merchant.cancellationCandidates[0].title ??
                                 c.merchant.cancellationCandidates[0].url}
                             </a>

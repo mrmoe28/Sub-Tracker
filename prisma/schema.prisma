@@ -200,6 +200,9 @@ model CancellationCandidate {
   title       String?
   snippet     String?  @db.Text
   source      String?
+  // "cancel" (direct cancel flow), "manage" (merchant account/billing page),
+  // "contact" (merchant support/contact page) or "howto" (third-party article).
+  kind        String?
   confidence  Float?
   status      CancellationCandidateStatus @default(PENDING_REVIEW)
   createdAt   DateTime @default(now())
