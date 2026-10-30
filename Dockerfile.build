@@ -36,6 +36,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 # output ships only a pruned node_modules that omits the Prisma CLI's transitive
 # deps (e.g. @prisma/engines, effect), so we overlay the complete set here.
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+# Headless Chromium for the "log in & find cancel page" flow (Playwright).
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN node_modules/.bin/playwright install --with-deps chromium \
+    && chmod -R a+rX /ms-playwright \
+    && rm -rf /var/lib/apt/lists/*
 USER nextjs
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

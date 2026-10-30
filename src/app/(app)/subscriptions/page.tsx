@@ -100,6 +100,15 @@ export default async function SubscriptionsPage() {
             orderBy: { confidence: "desc" },
             take: 1,
           },
+          logins: {
+            where: { userId: user.id },
+            take: 1,
+            select: {
+              username: true,
+              lastAttemptStatus: true,
+              lastAttemptNote: true,
+            },
+          },
         },
       },
     },
@@ -310,6 +319,15 @@ export default async function SubscriptionsPage() {
                             )}
                             pendingCancellationCandidateId={
                               c.merchant?.cancellationCandidates[0]?.id ?? null
+                            }
+                            loginUsername={
+                              c.merchant?.logins[0]?.username ?? null
+                            }
+                            lastLoginStatus={
+                              c.merchant?.logins[0]?.lastAttemptStatus ?? null
+                            }
+                            lastLoginNote={
+                              c.merchant?.logins[0]?.lastAttemptNote ?? null
                             }
                             status={c.status}
                           />
