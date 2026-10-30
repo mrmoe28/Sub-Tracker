@@ -84,6 +84,12 @@ export default async function TransactionsPage({ searchParams }: Props) {
       .then((n) => n > 0),
   ]);
 
+  const accountLinks = await prisma.plaidAccount.findMany({
+    where: { userId: user.id },
+    select: { id: true, name: true, mask: true },
+    orderBy: { name: "asc" },
+  });
+
   const categoryById = new Map(categories.map((c) => [c.id, c]));
   const summary = new Map<
     string,
@@ -148,6 +154,24 @@ export default async function TransactionsPage({ searchParams }: Props) {
           <SyncTransactionsButton disabled={!hasAnyItems} />
         </div>
       </div>
+
+      {accountLinks.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs uppercase text-muted-foreground">
+            Accounts
+          </span>
+          {accountLinks.map((link) => (
+            <Link
+              key={link.id}
+              href={`/accounts/${link.id}`}
+              className="rounded-md border px-3 py-1.5 text-xs transition-colors hover:bg-muted"
+            >
+              {link.name}
+              {link.mask ? ` ····${link.mask}` : ""}
+            </Link>
+          ))}
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader>
