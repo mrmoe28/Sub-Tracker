@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   Card,
   CardContent,
@@ -92,10 +94,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                   key={account.id}
                   className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
                 >
-                  <span>
+                  <Link
+                    href={`/accounts/${account.id}`}
+                    className="font-medium underline-offset-4 hover:underline"
+                  >
                     {account.name}
                     {account.mask ? ` ****${account.mask}` : ""}
-                  </span>
+                  </Link>
                   <span className="text-xs text-muted-foreground">
                     {account.plaidItem.institutionName ?? "Institution"} /{" "}
                     {account.subtype ?? "account"}
