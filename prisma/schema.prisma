@@ -48,8 +48,22 @@ model User {
   merchantLogins MerchantLogin[]
   browserSessions BrowserSession[]
   cancelAttempts  CancelAttempt[]
+  emailConnections EmailConnection[]
   // SHA-256 of the pairing token the Connect extension sends as a bearer.
   connectTokenHash String?
+}
+
+model EmailConnection {
+  id String @id @default(cuid())
+  userId String
+  email String
+  ciphertext Bytes
+  iv Bytes
+  authTag Bytes
+  keyVersion Int
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, email])
 }
 
 model Account {

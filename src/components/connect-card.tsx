@@ -97,10 +97,9 @@ export function ConnectCard({ sessions, hasToken }: Props) {
             Open <code>chrome://extensions</code>, turn on Developer mode, click
             &quot;Load unpacked&quot; and pick the unzipped folder.
           </li>
-          <li>Generate a pairing token below and paste it into the extension popup.</li>
+          <li>Version 0.2 connects automatically when you use Cancel for me in this Chrome profile. No pairing token is needed for that workflow.</li>
           <li>
-            Visit the merchant (e.g. hulu.com) while signed in, open the extension and
-            click &quot;Send this site&apos;s session&quot;.
+            Leave your signed-in merchant tab open. Cancel for me checks matching Chrome tabs before asking for a login. The popup below is a legacy manual fallback.
           </li>
         </ol>
         <div className="flex flex-wrap items-center gap-2">

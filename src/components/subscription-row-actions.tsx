@@ -14,6 +14,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { discoverChromeSession } from "@/lib/chrome-connect";
 
 type Action = "confirm" | "ignore" | "cancel";
 
@@ -152,7 +153,34 @@ export function SubscriptionRowActions({
     }
   }
 
-  function cancelForMe() {
+  async function cancelForMe() {
+    if (!canHunt) {
+      setLoading("cancel");
+      setError(null);
+      setNotice("Looking for this merchant in your connected Chrome…");
+      try {
+        await discoverChromeSession(candidateId);
+      } catch (error) {
+        setError(error instanceof Error ? error.message : "Chrome discovery failed.");
+        setNotice("Checking connected email accounts for receipts…");
+        try {
+          const response = await fetch(`/api/subscriptions/${candidateId}/email-evidence`, { method: "POST" });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Email lookup failed.");
+          setNotice(result.evidence?.length
+            ? result.evidence.map((item: { account: string; subject: string; sender: string }) => `${item.account}: ${item.subject} (${item.sender})`).join("; ")
+            : result.unavailable?.length
+              ? "A connected mailbox could not be searched. Reconnect it in Settings."
+              : result.connected
+                ? "No matching receipt headers found. No cancellation was attempted."
+                : "Connect Gmail read-only in Settings so the app can search your receipts.");
+        } catch {
+          setNotice("Email lookup is unavailable. No cancellation was attempted.");
+        }
+        setLoading(null);
+        return;
+      }
+    }
     return postAttempt(
       `/api/subscriptions/${candidateId}/cancel`,
       "cancel",
@@ -352,7 +380,7 @@ export function SubscriptionRowActions({
             {loading === "hunt" ? "Signing in…" : hasSession ? "Find as me" : "Log in & find"}
           </Button>
         ) : null}
-        {canHunt && status !== "ARCHIVED" && !attemptActive ? (
+        {status !== "ARCHIVED" && status !== "LAPSED" && status !== "DISMISSED" && !attemptActive ? (
           <Button
             size="sm"
             disabled={pending || Boolean(loading)}

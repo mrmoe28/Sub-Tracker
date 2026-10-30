@@ -8,13 +8,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConnectCard } from "@/components/connect-card";
+import { EmailConnectCard } from "@/components/email-connect-card";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ email?: string }> }) {
   const user = await getCurrentUser();
+  const query = await searchParams;
+  const emailAccounts = await prisma.emailConnection.findMany({ where: { userId: user.id }, select: { email: true } });
   const accounts = await prisma.plaidAccount.findMany({
     where: { userId: user.id },
     select: {
@@ -45,6 +48,7 @@ export default async function SettingsPage() {
         </p>
       </div>
 
+      <EmailConnectCard accounts={emailAccounts.map((account) => account.email)} outcome={query.email} />
       <Card>
         <CardHeader>
           <CardTitle>Profile</CardTitle>
@@ -101,7 +105,7 @@ export default async function SettingsPage() {
           <CardTitle>Cancel finder logins</CardTitle>
           <CardDescription>
             Let the finder sign in as you so it can land on each merchant&apos;s cancel
-            page. It never clicks Cancel for you.
+            page. Final cancellation clicks require your approval.
           </CardDescription>
         </CardHeader>
         <CardContent>

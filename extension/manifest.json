@@ -1,10 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Sub-Tracker Connect",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Send the current site's signed-in session to Sub-Tracker so it can find your cancel page as you.",
   "permissions": ["cookies", "activeTab", "storage", "tabs"],
   "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [{
+    "matches": ["https://sub.lock28.com/*"],
+    "js": ["bridge.js"]
+  }],
   "action": {
     "default_popup": "popup.html",
     "default_title": "Sub-Tracker Connect"
