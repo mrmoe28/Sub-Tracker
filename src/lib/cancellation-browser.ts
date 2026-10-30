@@ -105,6 +105,7 @@ async function frameUrls(page: Page): Promise<string[]> {
     try {
       const element = await frame.frameElement();
       const visible = await element.evaluate((node) => {
+        if (!(node instanceof Element)) return false;
         const bounds = node.getBoundingClientRect();
         if (bounds.width < 20 || bounds.height < 20) return false;
         for (let current: Element | null = node; current; current = current.parentElement) {
