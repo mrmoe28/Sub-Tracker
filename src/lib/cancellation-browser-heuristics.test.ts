@@ -2,9 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  cancelConfirmationText,
+  classifyCancelControl,
   detectBlocker,
+  extractPhoneNumber,
   isCancelControl,
+  isLapsed,
   looksLikeLoginFailure,
+  looksPhoneOnly,
   scoreNavLink,
 } from "./cancellation-browser-heuristics";
 
@@ -74,4 +79,45 @@ test("detectBlocker: 2FA and captcha", () => {
 test("looksLikeLoginFailure", () => {
   assert.equal(looksLikeLoginFailure("Incorrect username or password."), true);
   assert.equal(looksLikeLoginFailure("Welcome, Moe"), false);
+});
+
+test("classifyCancelControl: confirm vs advance vs keep", () => {
+  for (const l of ["Yes, cancel", "Cancel membership", "Confirm cancellation", "Finish cancellation", "Cancel subscription", "I'm sure", "Turn off auto-renew", "Cancel anyway"]) {
+    assert.equal(classifyCancelControl(l), "confirm", l);
+  }
+  for (const l of ["Continue", "Next", "No thanks", "Decline offer", "Continue to cancel"]) {
+    assert.equal(classifyCancelControl(l), "advance", l);
+  }
+  for (const l of ["Keep my plan", "Stay", "Accept offer", "Pause instead", "Get 50% off", "Never mind", "Go back", "Save 30%", "Switch to Basic"]) {
+    assert.equal(classifyCancelControl(l), "none", l);
+  }
+});
+
+test("cancelConfirmationText: finds proof sentences", () => {
+  assert.ok(cancelConfirmationText("Done. Your membership has been canceled. You can stream until Nov 12."));
+  assert.ok(cancelConfirmationText("Cancellation confirmed."));
+  assert.equal(cancelConfirmationText("We're sorry to see you go."), null);
+  assert.equal(cancelConfirmationText("If you cancel, you won't be charged again."), null);
+  assert.equal(cancelConfirmationText("Access until Nov 12. Finish cancellation?"), null);
+  assert.equal(cancelConfirmationText("If your membership is canceled, access ends today."), null);
+  assert.equal(cancelConfirmationText("Cancellation complete?"), null);
+  assert.equal(cancelConfirmationText("Are you sure you want to cancel?"), null);
+  assert.equal(cancelConfirmationText("Manage your membership"), null);
+});
+
+test("looksPhoneOnly / extractPhoneNumber", () => {
+  assert.equal(looksPhoneOnly("To cancel your policy, please call us at 1-800-468-3466."), true);
+  assert.equal(looksPhoneOnly("Cancel membership"), false);
+  assert.equal(extractPhoneNumber("call us at 1-800-468-3466 today"), "1-800-468-3466");
+});
+
+test("isLapsed: 2 cycles + slack", () => {
+  const now = new Date("2026-10-30T00:00:00Z");
+  assert.equal(isLapsed(new Date("2025-12-22"), "MONTHLY", now), true);
+  assert.equal(isLapsed(new Date("2026-10-26"), "MONTHLY", now), false);
+  assert.equal(isLapsed(new Date("2026-08-17"), "MONTHLY", now), true);
+  assert.equal(isLapsed(new Date("2026-09-15"), "MONTHLY", now), false);
+  assert.equal(isLapsed(new Date("2025-06-01"), "ANNUALLY", now), false);
+  assert.equal(isLapsed(null, "MONTHLY", now), false);
+  assert.equal(isLapsed(new Date("2025-01-01"), "UNKNOWN", now), false);
 });

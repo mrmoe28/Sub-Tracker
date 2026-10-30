@@ -110,3 +110,90 @@ export const ACCOUNT_PATHS = [
   "/youraccount",
   "/cancelplan",
 ];
+
+// ---------- Cancel agent: walking the flow after the cancel control ----------
+
+// Buttons that commit the cancellation. These are the irreversible click the
+// agent parks on until the user approves.
+const CONFIRM_CANCEL_RE =
+  /^(?:yes,?\s*)?(?:cancel|end|stop|terminate|finish cancell?ation|confirm cancell?ation|complete cancell?ation|turn off auto-?renew(?:al)?|don'?t renew|do not renew)(?:\s+(?:my\s+)?(?:subscription|membership|plan|policy|premium|service|account|auto-?renew(?:al)?|renewal|anyway|now))?\s*$|^(?:yes|confirm|i'?m sure|i understand)(?:,?\s*cancel(?:\s+\w+){0,2})?\s*$/i;
+
+// Retention offers and "are you sure you want to leave" bait. Never click.
+const KEEP_RE =
+  /keep|stay|remain|don'?t cancel|do not cancel|never ?mind|go back|not now|accept (?:offer|discount)|claim (?:offer|discount)|pause|switch (?:plan|to)|downgrade|resume|renew|reactivate|take the deal|get .* off|save \d+%|special offer/i;
+
+// On a page the user is confirming cancellation on, "Continue"/"Next" moves
+// toward the final step (survey, reasons). Not irreversible by itself.
+const ADVANCE_RE =
+  /^(?:continue|next|continue to cancel|continue cancell?ation|proceed(?: with cancell?ation)?|skip|no thanks|no,? thanks|decline(?: offer)?)\s*$/i;
+
+export type CancelStepKind = "confirm" | "advance" | "none";
+
+// Classify a control on a cancel-flow page. "confirm" = final irreversible
+// commit; "advance" = safe step forward (decline offer, next); "none" = skip.
+export function classifyCancelControl(text: string): CancelStepKind {
+  const label = text.trim().replace(/\s+/g, " ");
+  if (!label || label.length > 80) return "none";
+  if (
+    KEEP_RE.test(label) &&
+    !/cancel anyway|don'?t renew|do not renew|turn off auto-?renew/i.test(label)
+  ) {
+    return "none";
+  }
+  if (CONFIRM_CANCEL_RE.test(label)) return "confirm";
+  if (ADVANCE_RE.test(label)) return "advance";
+  return "none";
+}
+
+// Text that proves the merchant accepted the cancellation.
+const CONFIRMATION_RE =
+  /\b(?:your |the )?(?:subscription|membership|plan|policy|auto-?renew(?:al)?|renewal|account|service) (?:has been|was|is now|is) (?:cancel+ed|ended|turned off|deactivated|set to expire|scheduled to end)\b|\bcancell?ation (?:confirmed|complete|successful|is complete|has been processed)\b|\byou(?:'ve| have) (?:successfully )?cancel+ed\b|\bauto-?renew(?:al)? (?:is )?(?:off|disabled)\b/i;
+
+export function cancelConfirmationText(bodyText: string): string | null {
+  const m = CONFIRMATION_RE.exec(bodyText);
+  if (!m) return null;
+  const sentenceStart = Math.max(bodyText.lastIndexOf(".", m.index - 1), bodyText.lastIndexOf("\n", m.index - 1)) + 1;
+  const prefix = bodyText.slice(sentenceStart, m.index);
+  if (/\b(?:if|when|once|after|unless|until|before|whether|not|never|will|would|could|may|might)\b/i.test(prefix)) return null;
+  if (bodyText.slice(m.index + m[0].length).trimStart().startsWith("?")) return null;
+  const start = Math.max(0, m.index - 80);
+  return bodyText.slice(start, m.index + m[0].length + 120).replace(/\s+/g, " ").trim();
+}
+
+// Merchants that only cancel by phone/chat. The agent says so up front.
+const PHONE_ONLY_RE =
+  /(?:to cancel|cancell?ations?)[^.]{0,80}(?:call|phone|contact (?:us|customer service|your agent)|chat with|speak (?:to|with))|(?:call|phone)[^.]{0,60}to cancel|cancel (?:by|over the) phone/i;
+
+export function looksPhoneOnly(bodyText: string): boolean {
+  return PHONE_ONLY_RE.test(bodyText);
+}
+
+export function extractPhoneNumber(bodyText: string): string | null {
+  const m = /(?:\+?1[\s.-]?)?\(?\b(?:8(?:00|33|44|55|66|77|88)|\d{3})\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/.exec(bodyText);
+  return m ? m[0].trim() : null;
+}
+
+// ---------- Lapsed detection ----------
+
+const CYCLE_DAYS: Record<string, number> = {
+  WEEKLY: 7,
+  BIWEEKLY: 14,
+  SEMI_MONTHLY: 15,
+  MONTHLY: 31,
+  ANNUALLY: 366,
+  UNKNOWN: 31,
+};
+
+// A subscription that hasn't billed in 2+ cycles (plus a week of slack)
+// stopped on its own. There's nothing to cancel; it should leave the list.
+export function isLapsed(
+  lastSeenAt: Date | null,
+  frequency: string,
+  now: Date = new Date(),
+): boolean {
+  if (!lastSeenAt) return false;
+  if (frequency === "UNKNOWN" || !CYCLE_DAYS[frequency]) return false;
+  const cycle = CYCLE_DAYS[frequency];
+  const silentDays = (now.getTime() - lastSeenAt.getTime()) / 86_400_000;
+  return silentDays > cycle * 2 + 7;
+}

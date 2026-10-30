@@ -49,6 +49,13 @@ export interface HuntInput {
   seedUrls?: string[];
 }
 
+// When passed to loginAndFindCancelPage, the browser is handed to the caller
+// instead of closed, so the cancel agent can keep acting on the found page.
+export interface BrowserHandle {
+  browser: Browser | null;
+  page: Page | null;
+}
+
 const NAV_TIMEOUT_MS = 20_000;
 const TOTAL_BUDGET_MS = 90_000;
 const MAX_PAGES = 14;
@@ -286,7 +293,10 @@ function result(
 // Sign in to the merchant with the stored credentials and crawl the account
 // area for a cancel control. Never clicks the cancel control itself — the user
 // finishes the cancellation; the app only gets them to the right page.
-export async function loginAndFindCancelPage(input: HuntInput): Promise<HuntResult> {
+export async function loginAndFindCancelPage(
+  input: HuntInput,
+  handle?: BrowserHandle,
+): Promise<HuntResult> {
   const domain = input.domain.toLowerCase();
   const deadline = Date.now() + TOTAL_BUDGET_MS;
   let browser: Browser | null = null;
@@ -294,12 +304,14 @@ export async function loginAndFindCancelPage(input: HuntInput): Promise<HuntResu
 
   try {
     browser = await launch();
+    if (handle) handle.browser = browser;
     const context = await browser.newContext({
       userAgent: USER_AGENT,
       viewport: { width: 1280, height: 900 },
       locale: "en-US",
     });
     const page = await context.newPage();
+    if (handle) handle.page = page;
 
     // 0. Reuse the user's live session when we have one: no password typed,
     //    2FA already cleared in their own browser.
@@ -517,6 +529,8 @@ export async function loginAndFindCancelPage(input: HuntInput): Promise<HuntResu
     const msg = err instanceof Error ? err.message : String(err);
     return result("error", `Browser run failed: ${msg.slice(0, 200)}`, { pagesVisited: visited });
   } finally {
-    await browser?.close().catch(() => undefined);
+    if (!handle) await browser?.close().catch(() => undefined);
   }
 }
+
+export { bodyText, firstVisible, frameUrls, scanPage, settle };

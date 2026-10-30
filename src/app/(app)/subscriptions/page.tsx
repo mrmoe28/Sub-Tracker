@@ -31,6 +31,7 @@ const STATUS_LABEL: Record<SubscriptionCandidateStatus, string> = {
   CONFIRMED: "Confirmed",
   DISMISSED: "Ignored",
   ARCHIVED: "Canceled",
+  LAPSED: "Lapsed",
 };
 
 const STATUS_BADGE_CLASS: Record<SubscriptionCandidateStatus, string> = {
@@ -40,6 +41,7 @@ const STATUS_BADGE_CLASS: Record<SubscriptionCandidateStatus, string> = {
     "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-300",
   DISMISSED: "bg-muted text-muted-foreground",
   ARCHIVED: "bg-muted text-muted-foreground line-through",
+  LAPSED: "bg-muted text-muted-foreground",
 };
 
 function formatDate(d: Date | null): string {
@@ -87,7 +89,10 @@ function suggestionLabel(kind: string | null): string {
   }
 }
 
-export default async function SubscriptionsPage() {
+export default async function SubscriptionsPage({ searchParams }: {
+  searchParams: Promise<{ showLapsed?: string }>;
+}) {
+  const showLapsed = (await searchParams).showLapsed === "1";
   const user = await getCurrentUser();
   const hasItems = (await prisma.plaidItem.count({ where: { userId: user.id } })) > 0;
   const sessions = await prisma.browserSession.findMany({
@@ -102,8 +107,22 @@ export default async function SubscriptionsPage() {
   };
 
   const candidates = await prisma.subscriptionCandidate.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, ...(showLapsed ? {} : { status: { not: "LAPSED" as const } }) },
     include: {
+      cancelAttempts: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          status: true,
+          note: true,
+          url: true,
+          pendingControlText: true,
+          confirmationText: true,
+          approvalScreenshot: true,
+          proofScreenshot: true,
+        },
+      },
       merchant: {
         include: {
           cancellationCandidates: {
@@ -156,6 +175,9 @@ export default async function SubscriptionsPage() {
           </p>
         </div>
         <DetectSubscriptionsButton disabled={!hasItems} />
+        <a className="text-sm underline" href={showLapsed ? "/subscriptions" : "/subscriptions?showLapsed=1"}>
+          {showLapsed ? "Hide lapsed" : "Show lapsed"}
+        </a>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -340,6 +362,26 @@ export default async function SubscriptionsPage() {
                             }
                             lastLoginNote={
                               c.merchant?.logins[0]?.lastAttemptNote ?? null
+                            }
+                            latestCancelAttempt={
+                              c.cancelAttempts[0]
+                                ? {
+                                    id: c.cancelAttempts[0].id,
+                                    status: c.cancelAttempts[0].status,
+                                    note: c.cancelAttempts[0].note,
+                                    url: c.cancelAttempts[0].url,
+                                    pendingControlText:
+                                      c.cancelAttempts[0].pendingControlText,
+                                    confirmationText:
+                                      c.cancelAttempts[0].confirmationText,
+                                    hasApprovalScreenshot: Boolean(
+                                      c.cancelAttempts[0].approvalScreenshot?.length,
+                                    ),
+                                    hasProofScreenshot: Boolean(
+                                      c.cancelAttempts[0].proofScreenshot?.length,
+                                    ),
+                                  }
+                                : null
                             }
                             status={c.status}
                           />

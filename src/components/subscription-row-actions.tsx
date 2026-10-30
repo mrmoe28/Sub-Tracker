@@ -1,13 +1,40 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Check, CircleSlash, KeyRound, LogIn, Search, X } from "lucide-react";
+import {
+  Bot,
+  Check,
+  CircleSlash,
+  KeyRound,
+  LogIn,
+  Search,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 type Action = "confirm" | "ignore" | "cancel";
+
+export type CancelAttemptStatus =
+  | "RUNNING"
+  | "AWAITING_APPROVAL"
+  | "NEEDS_CODE"
+  | "CANCELED"
+  | "FAILED"
+  | "ABORTED";
+
+export interface CancelAttemptSummary {
+  id: string;
+  status: CancelAttemptStatus;
+  note: string | null;
+  url: string | null;
+  pendingControlText: string | null;
+  confirmationText: string | null;
+  hasApprovalScreenshot: boolean;
+  hasProofScreenshot: boolean;
+}
 
 interface Props {
   candidateId: string;
@@ -19,11 +46,14 @@ interface Props {
   hasSession?: boolean;
   lastLoginStatus?: string | null;
   lastLoginNote?: string | null;
+  // Most recent Cancel-for-me run for this subscription, if any.
+  latestCancelAttempt?: CancelAttemptSummary | null;
   status:
     | "PENDING_REVIEW"
     | "CONFIRMED"
     | "DISMISSED"
-    | "ARCHIVED";
+    | "ARCHIVED"
+    | "LAPSED";
 }
 
 interface DecideResponse {
@@ -52,6 +82,7 @@ export function SubscriptionRowActions({
   hasSession,
   lastLoginStatus,
   lastLoginNote,
+  latestCancelAttempt,
   status,
 }: Props) {
   const router = useRouter();
@@ -63,8 +94,100 @@ export function SubscriptionRowActions({
   const [username, setUsername] = useState(loginUsername ?? "");
   const [password, setPassword] = useState("");
   const [loginUrl, setLoginUrl] = useState("");
+  const [attempt, setAttempt] = useState<CancelAttemptSummary | null>(
+    latestCancelAttempt ?? null,
+  );
+  const [code, setCode] = useState("");
+  const attemptId = attempt?.id;
+  const attemptStatus = attempt?.status;
+  useEffect(() => {
+    if (!attemptId || !attemptStatus || !["RUNNING", "AWAITING_APPROVAL", "NEEDS_CODE"].includes(attemptStatus)) return;
+    const controller = new AbortController();
+    const timer = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/cancel-attempts/${attemptId}`, {
+          cache: "no-store", signal: controller.signal,
+        });
+        if (response.ok) setAttempt(await response.json());
+      } catch {}
+    }, 3000);
+    return () => { clearInterval(timer); controller.abort(); };
+  }, [attemptId, attemptStatus]);
   const hasLogin = Boolean(loginUsername);
   const canHunt = hasLogin || Boolean(hasSession);
+  const attemptActive =
+    attempt?.status === "RUNNING" ||
+    attempt?.status === "AWAITING_APPROVAL" ||
+    attempt?.status === "NEEDS_CODE";
+
+  async function postAttempt(
+    url: string,
+    key: string,
+    body?: Record<string, unknown>,
+    busyNotice?: string,
+  ) {
+    setLoading(key);
+    setError(null);
+    setNotice(busyNotice ?? null);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = (await res.json()) as CancelAttemptSummary & {
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Cancel attempt failed");
+      setAttempt(data);
+      setNotice(null);
+      if (data.status === "CANCELED") {
+        startTransition(() => router.refresh());
+      }
+    } catch (e) {
+      setNotice(null);
+      setError(e instanceof Error ? e.message : "Cancel attempt failed");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  function cancelForMe() {
+    return postAttempt(
+      `/api/subscriptions/${candidateId}/cancel`,
+      "cancel",
+      undefined,
+      "Signing in and walking to the cancel button (up to ~90s)…",
+    );
+  }
+
+  function approveAttempt() {
+    if (!attempt) return;
+    return postAttempt(
+      `/api/cancel-attempts/${attempt.id}/approve`,
+      "cancel-approve",
+      undefined,
+      "Clicking cancel and waiting for the confirmation…",
+    );
+  }
+
+  function abortAttempt() {
+    if (!attempt) return;
+    return postAttempt(`/api/cancel-attempts/${attempt.id}/abort`, "cancel-abort");
+  }
+
+  function submitCode(e: FormEvent) {
+    e.preventDefault();
+    if (!attempt || !code.trim()) return;
+    const value = code.trim();
+    setCode("");
+    return postAttempt(
+      `/api/cancel-attempts/${attempt.id}/code`,
+      "cancel-code",
+      { code: value },
+      "Entering the code and continuing…",
+    );
+  }
 
   async function decide(action: Action) {
     setError(null);
@@ -229,6 +352,17 @@ export function SubscriptionRowActions({
             {loading === "hunt" ? "Signing in…" : hasSession ? "Find as me" : "Log in & find"}
           </Button>
         ) : null}
+        {canHunt && status !== "ARCHIVED" && !attemptActive ? (
+          <Button
+            size="sm"
+            disabled={pending || Boolean(loading)}
+            onClick={cancelForMe}
+            title="Sign in, walk to the cancel button, and stop for your approval before anything irreversible"
+          >
+            <Bot className="h-3.5 w-3.5" />
+            {loading === "cancel" ? "Working…" : "Cancel for me"}
+          </Button>
+        ) : null}
         <Button
           size="sm"
           variant="outline"
@@ -304,7 +438,7 @@ export function SubscriptionRowActions({
           />
           <p className="text-[11px] leading-snug text-muted-foreground">
             Stored encrypted. The app signs in, finds the cancel page, and
-            stops there — it never clicks cancel for you.
+            asks for approval before clicking a cancellation control.
           </p>
           <div className="flex justify-end gap-1">
             {hasLogin ? (
@@ -333,6 +467,135 @@ export function SubscriptionRowActions({
         </form>
       ) : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {attempt ? (
+        <div className="mt-1 flex w-72 flex-col gap-1.5 rounded-md border bg-muted/30 p-2 text-left">
+          {attempt.status === "AWAITING_APPROVAL" ? (
+            <>
+              {attempt.hasApprovalScreenshot ? (
+                <a
+                  href={`/api/cancel-attempts/${attempt.id}/screenshot?kind=approval`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open the full screenshot"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/cancel-attempts/${attempt.id}/screenshot?kind=approval`}
+                    alt="Page where the cancel button was found"
+                    className="w-full rounded border"
+                  />
+                </a>
+              ) : null}
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                {attempt.note ??
+                  `Ready to click "${attempt.pendingControlText ?? "Cancel"}". Nothing has been canceled yet.`}
+              </p>
+              <div className="flex justify-end gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={Boolean(loading)}
+                  onClick={abortAttempt}
+                >
+                  Stop
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={Boolean(loading)}
+                  onClick={approveAttempt}
+                >
+                  {loading === "cancel-approve"
+                    ? "Canceling…"
+                    : `Approve: ${attempt.pendingControlText ?? "Cancel"}`}
+                </Button>
+              </div>
+            </>
+          ) : null}
+          {attempt.status === "NEEDS_CODE" ? (
+            <form onSubmit={submitCode} className="flex flex-col gap-1.5">
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                {attempt.note ?? "The site sent you a verification code. Enter it to continue."}
+              </p>
+              <Input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="Verification code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                required
+              />
+              <div className="flex justify-end gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={Boolean(loading)}
+                  onClick={abortAttempt}
+                >
+                  Stop
+                </Button>
+                <Button type="submit" size="sm" disabled={Boolean(loading)}>
+                  {loading === "cancel-code" ? "Continuing…" : "Continue"}
+                </Button>
+              </div>
+            </form>
+          ) : null}
+          {attempt.status === "RUNNING" ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              {attempt.note ?? "Working on it…"}
+            </p>
+          ) : null}
+          {attempt.status === "CANCELED" ? (
+            <>
+              <p className="text-[11px] font-medium leading-snug text-emerald-700 dark:text-emerald-300">
+                Canceled. {attempt.confirmationText ? `"${attempt.confirmationText}"` : null}
+              </p>
+              {attempt.hasProofScreenshot ? (
+                <a
+                  href={`/api/cancel-attempts/${attempt.id}/screenshot?kind=proof`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] underline"
+                >
+                  View proof screenshot
+                </a>
+              ) : null}
+            </>
+          ) : null}
+          {attempt.status === "FAILED" || attempt.status === "ABORTED" ? (
+            <>
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                {attempt.note ?? (attempt.status === "ABORTED" ? "Stopped." : "Didn't finish.")}
+              </p>
+              {attempt.status === "FAILED" &&
+              (attempt.hasApprovalScreenshot || attempt.hasProofScreenshot) ? (
+                <a
+                  href={`/api/cancel-attempts/${attempt.id}/screenshot?kind=${attempt.hasProofScreenshot ? "proof" : "approval"}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] underline"
+                >
+                  View last screenshot
+                </a>
+              ) : null}
+              {attempt.url ? (
+                <a
+                  href={attempt.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="truncate text-[11px] underline"
+                  title={attempt.url}
+                >
+                  Open where it stopped
+                </a>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
       {notice ? (
         <p className="max-w-[36ch] text-right text-xs text-muted-foreground">
           {notice}

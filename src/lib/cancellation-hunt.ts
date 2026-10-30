@@ -1,6 +1,10 @@
 import "server-only";
 
-import { loginAndFindCancelPage, type HuntResult } from "./cancellation-browser";
+import {
+  loginAndFindCancelPage,
+  type BrowserHandle,
+  type HuntResult,
+} from "./cancellation-browser";
 import { hostnameOf, registrableDomain } from "./cancellation-rank";
 import { findCancellationCandidatesForMerchant } from "./cancellation-search";
 import { loadBrowserSession, markBrowserSessionUse } from "./browser-session";
@@ -19,6 +23,7 @@ export interface HuntOutcome extends HuntResult {
 export async function huntCancelPageForUser(
   userId: string,
   merchantId: string,
+  handle?: BrowserHandle,
 ): Promise<HuntOutcome> {
   const login = await loadMerchantLogin(userId, merchantId);
 
@@ -69,15 +74,18 @@ export async function huntCancelPageForUser(
     select: { url: true },
   });
 
-  const hunt = await loginAndFindCancelPage({
-    merchantName: merchant.name,
-    domain,
-    username: login?.username ?? null,
-    password: login?.password ?? null,
-    loginUrl: login?.loginUrl ?? null,
-    cookies: session?.cookies,
-    seedUrls: seeds.map((s) => s.url),
-  });
+  const hunt = await loginAndFindCancelPage(
+    {
+      merchantName: merchant.name,
+      domain,
+      username: login?.username ?? null,
+      password: login?.password ?? null,
+      loginUrl: login?.loginUrl ?? null,
+      cookies: session?.cookies,
+      seedUrls: seeds.map((s) => s.url).filter((url) => !handle || !/cancel|unsubscribe|terminate|end-membership/i.test(url)),
+    },
+    handle,
+  );
 
   let candidateId: string | null = null;
   if ((hunt.status === "found_cancel" || hunt.status === "found_account") && hunt.url) {

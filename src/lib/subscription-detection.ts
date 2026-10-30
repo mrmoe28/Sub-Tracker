@@ -17,6 +17,7 @@ import { ensureMerchant } from "./merchant";
 import { safeLogError } from "./safe-error";
 import { decryptToken } from "./token-encryption";
 import { looksLikeNonSubscription } from "./subscription-filters";
+import { isLapsed } from "./cancellation-browser-heuristics";
 
 // ---------- Frequency / amount helpers ----------
 
@@ -486,6 +487,51 @@ export interface DetectionRunResult {
     evaluated: number;
     candidatesUpserted: number;
   };
+  lapsed: {
+    marked: number;
+    revived: number;
+  };
+}
+
+// A subscription that has not charged for 2+ billing cycles is treated as
+// already dead: it is marked LAPSED and leaves the action list. If a new
+// charge shows up later, it comes back as PENDING_REVIEW.
+export async function markLapsedCandidates(
+  userId: string,
+  now: Date = new Date(),
+): Promise<{ marked: number; revived: number }> {
+  const rows = await prisma.subscriptionCandidate.findMany({
+    where: {
+      userId,
+      status: { in: ["PENDING_REVIEW", "CONFIRMED", "LAPSED"] },
+    },
+    select: { id: true, status: true, frequency: true, lastSeenAt: true },
+  });
+  const toLapse = rows
+    .filter((r) => r.status !== "LAPSED" && isLapsed(r.lastSeenAt, r.frequency, now))
+    .map((r) => r.id);
+  const toRevive = rows
+    .filter((r) => r.status === "LAPSED" && !isLapsed(r.lastSeenAt, r.frequency, now))
+    .map((r) => r.id);
+  let marked = 0;
+  let revived = 0;
+  if (toLapse.length) {
+    marked = (
+      await prisma.subscriptionCandidate.updateMany({
+        where: { id: { in: toLapse }, userId },
+        data: { status: "LAPSED" },
+      })
+    ).count;
+  }
+  if (toRevive.length) {
+    revived = (
+      await prisma.subscriptionCandidate.updateMany({
+        where: { id: { in: toRevive }, userId },
+        data: { status: "PENDING_REVIEW" },
+      })
+    ).count;
+  }
+  return { marked, revived };
 }
 
 export async function runDetection(
@@ -513,6 +559,7 @@ export async function runDetection(
   }
 
   const heuristic = await detectHeuristicCandidates(userId);
+  const lapsed = await markLapsedCandidates(userId);
 
   return {
     plaid: {
@@ -522,5 +569,6 @@ export async function runDetection(
       candidatesSkipped: plaidCandidatesSkipped,
     },
     heuristic,
+    lapsed,
   };
 }
