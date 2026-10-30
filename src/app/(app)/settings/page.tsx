@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConnectCard } from "@/components/connect-card";
 import { EmailConnectCard } from "@/components/email-connect-card";
+import { ConnectBankButton } from "@/components/connect-bank-button";
+import { PaymentCardsCard } from "@/components/payment-cards-card";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 
@@ -28,6 +30,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       plaidItem: { select: { institutionName: true } },
     },
     orderBy: { name: "asc" },
+  });
+  const cards = await prisma.paymentCard.findMany({
+    where: { userId: user.id },
+    select: { id: true, nickname: true, last4: true, issuer: true },
+    orderBy: { createdAt: "asc" },
   });
   const sessions = await prisma.browserSession.findMany({
     where: { userId: user.id },
@@ -76,7 +83,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <CardContent className="space-y-3">
           {accounts.length === 0 ? (
             <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-              No accounts linked. Connect a bank from the dashboard.
+              No accounts linked yet.
             </div>
           ) : (
             <ul className="space-y-2">
@@ -97,6 +104,19 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               ))}
             </ul>
           )}
+          <ConnectBankButton />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cards</CardTitle>
+          <CardDescription>
+            Save a card nickname and its last 4 digits to recognize charges. Full card numbers are never stored.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PaymentCardsCard cards={cards} />
         </CardContent>
       </Card>
 
