@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { User } from "lucide-react";
 
-import { SignOutButton } from "@/components/auth-actions";
+import { SignOutMenuItem } from "@/components/sign-out-menu-item";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,9 +53,7 @@ export async function AppTopbar() {
               Settings
             </Link>
           </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <SignOutButton />
-          </DropdownMenuItem>
+          <SignOutMenuItem />
         </DropdownMenuContent>
       </DropdownMenu>
     </header>
