@@ -36,3 +36,9 @@ The OAuth client must allow `https://sub.lock28.com/api/email/callback`; Gmail A
 - Fixtures use synthetic credentials. Live email consent, live receipt lookup, and real-merchant cancellation are not established by these tests.
 
 The account-discovery fixture additionally checks missing-domain resolution, user-bound and expiring website selections, tamper rejection, and exact-host session storage. `npm run test:account-ui` (after a production build for CSS) renders the real row component in Chromium at desktop and mobile widths, selects a suggested website, opens native Chrome, imports a synthetic session, and verifies that final cancellation waits for explicit approval.
+
+## Live verification on Master
+
+On 2026-10-30, the deployed missing-domain flow found vercel.com for Vercel Domains, found Vercel receipt headers in the connected Gmail account, opened the provider in the everyday Chrome profile, and imported the session after Google sign-in. The app browser reached authenticated Billing Information. The native team dashboard reported Suspended; neither observation is cancellation proof, and no cancellation was submitted.
+
+The live billing page exposed a false-positive CAPTCHA stop from background verification frames. Challenge detection now considers visible frames and excludes passive invisible reCAPTCHA anchor widgets; visible challenges and explicit human-verification text still stop automation. A real Chromium regression fixture covers both sides. This does not solve or bypass a CAPTCHA.

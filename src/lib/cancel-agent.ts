@@ -208,7 +208,7 @@ async function walk(attemptId: string, l: LiveAttempt): Promise<AttemptView> {
   const { page, merchantName } = l;
   for (let i = 0; i < MAX_WALK_STEPS; i += 1) {
     const text = await bodyText(page);
-    const blocker = detectBlocker(text, frameUrls(page));
+    const blocker = detectBlocker(text, await frameUrls(page));
     if (blocker === "captcha") {
       return finish(attemptId, "FAILED", `${merchantName} put up a captcha on ${page.url()}; finish from there in your own browser.`, {
         url: page.url(),
@@ -461,7 +461,7 @@ export async function submitCancelCode(userId: string, attemptId: string, code: 
   await settle(l.page);
   await l.page.waitForTimeout(1_000);
   const text = await bodyText(l.page);
-  if (detectBlocker(text, frameUrls(l.page)) === "needs_2fa") {
+  if (detectBlocker(text, await frameUrls(l.page)) === "needs_2fa") {
     return park(attemptId, l, "NEEDS_CODE", `${l.merchantName} didn't accept that code. Try again.`, null);
   }
   await prisma.cancelAttempt.update({ where: { id: attemptId }, data: { status: "RUNNING", note: "Code accepted; looking for the cancel page…" } });

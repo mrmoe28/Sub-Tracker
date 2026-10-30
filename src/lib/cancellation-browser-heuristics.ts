@@ -57,7 +57,14 @@ const CAPTCHA_FRAME_RE = /recaptcha|hcaptcha|turnstile|arkose|funcaptcha|challen
 
 // Something a bot cannot get past. Checked after every submit.
 export function detectBlocker(bodyText: string, frameUrls: string[]): Blocker | null {
-  if (frameUrls.some((u) => CAPTCHA_FRAME_RE.test(u))) return "captcha";
+  if (frameUrls.some((url) => {
+    if (!CAPTCHA_FRAME_RE.test(url)) return false;
+    try {
+      const parsed = new URL(url);
+      if (/\/recaptcha\/(?:api2|enterprise)\/anchor$/.test(parsed.pathname) && parsed.searchParams.get("size") === "invisible") return false;
+    } catch {}
+    return true;
+  })) return "captcha";
   if (CAPTCHA_TEXT_RE.test(bodyText)) return "captcha";
   if (TWO_FACTOR_RE.test(bodyText)) return "needs_2fa";
   return null;

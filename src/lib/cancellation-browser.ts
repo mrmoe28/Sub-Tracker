@@ -1,6 +1,6 @@
 import "server-only";
 
-import { chromium, type Browser, type Frame, type Page } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 
 import {
   ACCOUNT_PATHS,
@@ -100,8 +100,24 @@ async function bodyText(page: Page): Promise<string> {
   }
 }
 
-function frameUrls(page: Page): string[] {
-  return page.frames().map((f: Frame) => f.url());
+async function frameUrls(page: Page): Promise<string[]> {
+  const urls = await Promise.all(page.frames().filter((frame) => frame !== page.mainFrame()).map(async (frame) => {
+    try {
+      const element = await frame.frameElement();
+      const visible = await element.evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        if (bounds.width < 20 || bounds.height < 20) return false;
+        for (let current: Element | null = node; current; current = current.parentElement) {
+          const style = getComputedStyle(current);
+          if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+        }
+        return true;
+      });
+      await element.dispose();
+      return visible ? frame.url() : null;
+    } catch { return null; }
+  }));
+  return urls.filter((url): url is string => Boolean(url));
 }
 
 async function settle(page: Page): Promise<void> {
@@ -407,7 +423,7 @@ export async function loginAndFindCancelPage(
     }
     if (loginOutcome === "stuck") {
       const text = await bodyText(page);
-      const b = detectBlocker(text, frameUrls(page));
+      const b = detectBlocker(text, await frameUrls(page));
       if (b) {
         return result(
           b,
@@ -433,7 +449,7 @@ export async function loginAndFindCancelPage(
 
     // 2. Did the login stick?
     const afterText = await bodyText(page);
-    const blocker: Blocker | null = detectBlocker(afterText, frameUrls(page));
+    const blocker: Blocker | null = detectBlocker(afterText, await frameUrls(page));
     if (blocker) {
       return result(
         blocker,
@@ -499,7 +515,7 @@ export async function loginAndFindCancelPage(
       }
       visited += 1;
       const text = await bodyText(page);
-      const b = detectBlocker(text, frameUrls(page));
+      const b = detectBlocker(text, await frameUrls(page));
       if (b) {
         return result(b, `${input.merchantName} blocked the browser on ${current} (${b}).`, {
           url: current,

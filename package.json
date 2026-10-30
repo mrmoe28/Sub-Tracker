@@ -8,7 +8,7 @@
     "start": "prisma migrate deploy && prisma db seed && next start",
     "lint": "eslint",
     "test": "node --import tsx --test src/lib/category-suggestion.test.ts src/lib/cancellation-rank.test.ts src/lib/cancellation-browser-heuristics.test.ts src/lib/password-import.test.ts",
-    "test:browser": "node --conditions=react-server scripts/test-cancel-agent.mjs",
+    "test:browser": "node --conditions=react-server scripts/test-cancel-agent.mjs && node --conditions=react-server scripts/test-challenge-visibility.mjs",
     "test:account-ui": "node scripts/test-account-discovery-ui.mjs",
     "test:connect": "node --test scripts/test-chrome-connect.mjs && node --conditions=react-server scripts/test-email-discovery.mjs && node --conditions=react-server scripts/test-account-discovery.mjs && node scripts/test-chrome-connect-browser.mjs",
     "postinstall": "prisma generate || true",

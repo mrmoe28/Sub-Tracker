@@ -74,6 +74,9 @@ test("detectBlocker: 2FA and captcha", () => {
     null,
   );
   assert.equal(detectBlocker("Your plan: Premium. Next bill Nov 1.", []), null);
+  assert.equal(detectBlocker("Billing Information. Payment Method. Save.", ["https://www.google.com/recaptcha/enterprise/anchor?size=invisible"]), null);
+  assert.equal(detectBlocker("Welcome back", ["https://www.google.com/recaptcha/enterprise/bframe?size=invisible"]), "captcha");
+  assert.equal(detectBlocker("Please verify you are human", ["https://www.google.com/recaptcha/enterprise/anchor?size=invisible"]), "captcha");
 });
 
 test("looksLikeLoginFailure", () => {
