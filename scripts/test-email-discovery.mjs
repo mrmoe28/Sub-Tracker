@@ -33,6 +33,7 @@ globalThis.fetch = async (input, options) => {
   assert.equal(options.headers.Authorization, "Bearer fixture-access");
   if (url.pathname.endsWith("/messages")) {
     assert.match(url.searchParams.get("q"), /^"Merchant\s+OR anything"/);
+    assert.ok(url.searchParams.get("q").includes("{subject:receipt subject:invoice"));
     return Response.json({ messages: [{ id: "receipt" }] });
   }
   assert.equal(url.searchParams.get("format"), "metadata");

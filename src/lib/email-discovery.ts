@@ -51,7 +51,7 @@ export async function findEmailReceipts(userId: string, candidateId: string) {
         accessTokenAuthTag: connection.authTag,
         encryptionKeyVersion: connection.keyVersion,
       }) });
-      const query = new URLSearchParams({ q: `"${merchant}" {receipt invoice subscription membership payment renewal}`, maxResults: "10" });
+      const query = new URLSearchParams({ q: `"${merchant}" {subject:receipt subject:invoice subject:subscription subject:membership subject:payment subject:renewal}`, maxResults: "10" });
       const result = await gmailGet(token.access_token, `messages?${query}`);
       for (const message of result.messages ?? []) {
         const detail = await gmailGet(token.access_token, `messages/${encodeURIComponent(message.id)}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`);
