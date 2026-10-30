@@ -436,6 +436,8 @@ enum SubscriptionCandidateStatus {
 model SubscriptionCandidate {
   id String @id @default(cuid())
 
+  browserDomain String?
+
   userId            String
   merchantId        String?
   // Set when this candidate was generated from a Plaid stream.

@@ -27,6 +27,7 @@ const owned = ({ where }) => {
 };
 globalThis.prisma = {
   subscriptionCandidate: {
+    findFirst: async () => ({ merchant: { name: "Fixture", logins: [] } }),
     findFirstOrThrow: async () => ({ id: "candidate", name: "Fixture", merchantId: "merchant", merchant: { name: "Fixture" } }),
     update: async () => { archived = true; return {}; },
   },

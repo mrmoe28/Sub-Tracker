@@ -99,6 +99,9 @@ export function SubscriptionRowActions({
     latestCancelAttempt ?? null,
   );
   const [code, setCode] = useState("");
+  const [accountDomain, setAccountDomain] = useState<string | null>(null);
+  const [websiteSuggestions, setWebsiteSuggestions] = useState<{ domain: string; evidence: string; token: string }[]>([]);
+  const [needsChromeLogin, setNeedsChromeLogin] = useState(false);
   const attemptId = attempt?.id;
   const attemptStatus = attempt?.status;
   useEffect(() => {
@@ -153,14 +156,72 @@ export function SubscriptionRowActions({
     }
   }
 
-  async function cancelForMe() {
-    if (!canHunt) {
+  async function resolveAccount(token?: string) {
+    const response = await fetch(`/api/subscriptions/${candidateId}/account-discovery`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(token ? { action: "choose", token } : { action: "discover" }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Account discovery failed.");
+    setAccountDomain(result.domain ?? null);
+    setWebsiteSuggestions(result.suggestions ?? []);
+    if (!result.domain) {
+      setNotice(result.suggestions?.length
+        ? "Found possible websites. Confirm your provider before Chrome shares a session. This does not approve cancellation."
+        : result.searchUnavailable
+          ? "Website search is unavailable. No cancellation was attempted."
+          : result.unavailable?.length
+            ? "A connected mailbox needs reconnection in Settings. No website was identified."
+            : "No matching website or receipt found in the connected accounts. No cancellation was attempted.");
+    }
+    return result.domain as string | null;
+  }
+
+  async function chooseWebsite(token: string) {
+    setLoading("cancel");
+    setError(null);
+    try {
+      await resolveAccount(token);
+      return await cancelForMe(true);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Website selection failed.");
+    } finally { setLoading(null); }
+  }
+
+  async function openChromeLogin() {
+    setLoading("chrome-open");
+    setError(null);
+    try {
+      await discoverChromeSession(candidateId, "open");
+      setNeedsChromeLogin(true);
+      setNotice("Opened the provider in your everyday Chrome. Chrome can use its saved login there. Once signed in, return here and press Continue from Chrome. No password export needed.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not open Chrome.");
+    } finally { setLoading(null); }
+  }
+
+  async function cancelForMe(forceChrome = false) {
+    setLoading("cancel");
+    setError(null);
+    setNotice("Matching the subscription to its website and connected email…");
+    try {
+      const domain = await resolveAccount();
+      if (!domain && !hasLogin) { setLoading(null); return; }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Account discovery failed.");
+      setNotice(null);
+      setLoading(null);
+      return;
+    }
+    if (!canHunt || forceChrome) {
       setLoading("cancel");
       setError(null);
       setNotice("Looking for this merchant in your connected Chrome…");
       try {
         await discoverChromeSession(candidateId);
+        setNeedsChromeLogin(false);
       } catch (error) {
+        setNeedsChromeLogin(true);
         setError(error instanceof Error ? error.message : "Chrome discovery failed.");
         setNotice("Checking connected email accounts for receipts…");
         try {
@@ -384,7 +445,7 @@ export function SubscriptionRowActions({
           <Button
             size="sm"
             disabled={pending || Boolean(loading)}
-            onClick={cancelForMe}
+            onClick={() => cancelForMe()}
             title="Sign in, walk to the cancel button, and stop for your approval before anything irreversible"
           >
             <Bot className="h-3.5 w-3.5" />
@@ -493,6 +554,26 @@ export function SubscriptionRowActions({
             </Button>
           </div>
         </form>
+      ) : null}
+      {websiteSuggestions.length ? (
+        <div className="mt-2 flex w-80 flex-col gap-2 rounded-md border p-3 text-left">
+          <p className="text-sm font-medium">Which website provides this subscription?</p>
+          {websiteSuggestions.map((item) => (
+            <div key={item.domain} className="space-y-1">
+              <p className="break-words text-xs text-muted-foreground">{item.evidence}</p>
+              <Button size="sm" variant="outline" disabled={Boolean(loading)} onClick={() => chooseWebsite(item.token)}>
+                Use {item.domain}
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {accountDomain && (needsChromeLogin || attempt?.status === "FAILED") ? (
+        <div className="mt-2 flex w-80 flex-col gap-2 rounded-md border p-3 text-left">
+          <p className="text-xs">Sign in at {accountDomain} using your existing Chrome profile.</p>
+          <Button size="sm" variant="outline" disabled={Boolean(loading)} onClick={openChromeLogin}>Open Chrome sign-in</Button>
+          <Button size="sm" disabled={Boolean(loading)} onClick={() => cancelForMe(true)}>Continue from Chrome</Button>
+        </div>
       ) : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
       {attempt ? (

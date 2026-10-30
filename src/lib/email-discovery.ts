@@ -35,7 +35,7 @@ export async function gmailGet(accessToken: string, path: string) {
 
 export async function findEmailReceipts(userId: string, candidateId: string) {
   const candidate = await prisma.subscriptionCandidate.findFirst({
-    where: { userId, id: candidateId }, select: { merchant: { select: { name: true } } },
+    where: { userId, id: candidateId }, select: { browserDomain: true, merchant: { select: { name: true, domain: true } } },
   });
   if (!candidate?.merchant) throw new Error("This subscription is not linked to a merchant.");
   const connections = await prisma.emailConnection.findMany({ where: { userId } });
@@ -51,8 +51,20 @@ export async function findEmailReceipts(userId: string, candidateId: string) {
         accessTokenAuthTag: connection.authTag,
         encryptionKeyVersion: connection.keyVersion,
       }) });
-      const query = new URLSearchParams({ q: `"${merchant}" {subject:receipt subject:invoice subject:subscription subject:membership subject:payment subject:renewal}`, maxResults: "10" });
-      const result = await gmailGet(token.access_token, `messages?${query}`);
+      const billing = "{subject:receipt subject:invoice subject:subscription subject:membership subject:payment subject:renewal}";
+      const query = new URLSearchParams({ q: `"${merchant}" ${billing}`, maxResults: "10" });
+      let result = await gmailGet(token.access_token, `messages?${query}`);
+      if (!result.messages?.length) {
+        const knownDomain = candidate.browserDomain ?? candidate.merchant.domain;
+        const brand = merchant.split(/\s+/)[0];
+        const terms = [`"${merchant}"`];
+        if (knownDomain && /^[a-z0-9.-]+$/i.test(knownDomain)) terms.push(`from:${knownDomain}`);
+        if (brand.length >= 4 && brand !== merchant) terms.push(`"${brand}"`);
+        if (terms.length > 1) {
+          const fallback = new URLSearchParams({ q: `{${terms.join(" ")}} ${billing}`, maxResults: "10" });
+          result = await gmailGet(token.access_token, `messages?${fallback}`);
+        }
+      }
       for (const message of result.messages ?? []) {
         const detail = await gmailGet(token.access_token, `messages/${encodeURIComponent(message.id)}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`);
         const headers = detail.payload?.headers as { name: string; value: string }[] | undefined;

@@ -2,7 +2,6 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 
-import { registrableDomain } from "./cancellation-rank";
 import { prisma } from "./prisma";
 import { decryptToken, encryptToken } from "./token-encryption";
 
@@ -90,7 +89,7 @@ export async function saveBrowserSession(input: {
   cookies: SessionCookie[];
   sourceUrl?: string | null;
 }) {
-  const domain = registrableDomain(input.domain.toLowerCase());
+  const domain = input.domain.toLowerCase();
   const enc = encryptToken(JSON.stringify(input.cookies));
   const data = {
     cookiesCiphertext: enc.ciphertext,
@@ -124,7 +123,7 @@ export async function loadBrowserSession(
   domain: string,
 ): Promise<DecryptedBrowserSession | null> {
   const row = await prisma.browserSession.findUnique({
-    where: { userId_domain: { userId, domain: registrableDomain(domain.toLowerCase()) } },
+    where: { userId_domain: { userId, domain: domain.toLowerCase() } },
   });
   if (!row) return null;
   const json = decryptToken({

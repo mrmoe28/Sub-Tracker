@@ -22,6 +22,8 @@ const { findEmailReceipts } = require("../src/lib/email-discovery.ts");
 connection = { email: "fixture@example.com", ...encryptToken("fixture-refresh") };
 let fetched = 0;
 let fail = false;
+let broaden = false;
+let broadenedQueries = 0;
 globalThis.fetch = async (input, options) => {
   fetched++;
   if (fail) return new Response("{}", { status: 401 });
@@ -32,8 +34,13 @@ globalThis.fetch = async (input, options) => {
   }
   assert.equal(options.headers.Authorization, "Bearer fixture-access");
   if (url.pathname.endsWith("/messages")) {
-    assert.match(url.searchParams.get("q"), /^"Merchant\s+OR anything"/);
-    assert.ok(url.searchParams.get("q").includes("{subject:receipt subject:invoice"));
+    const query = url.searchParams.get("q");
+    assert.ok(query.includes("{subject:receipt subject:invoice"));
+    if (broaden && query.startsWith('"Merchant')) return Response.json({});
+    if (broaden) {
+      assert.match(query, /^\{"Merchant\s+OR anything" "Merchant"\}/);
+      broadenedQueries++;
+    } else assert.match(query, /^"Merchant\s+OR anything"/);
     return Response.json({ messages: [{ id: "receipt" }] });
   }
   assert.equal(url.searchParams.get("format"), "metadata");
@@ -47,6 +54,9 @@ const result = await findEmailReceipts("owner", "subscription");
 assert.equal(result.evidence[0].account, "fixture@example.com");
 assert.equal(result.evidence[0].subject, "Monthly receipt");
 assert.equal(result.unavailable.length, 0);
+broaden = true;
+assert.equal((await findEmailReceipts("owner", "subscription")).evidence.length, 1);
+assert.equal(broadenedQueries, 1);
 fail = true;
 const failed = await findEmailReceipts("owner", "subscription");
 assert.equal(failed.evidence.length, 0);

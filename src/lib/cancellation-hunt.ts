@@ -24,6 +24,7 @@ export async function huntCancelPageForUser(
   userId: string,
   merchantId: string,
   handle?: BrowserHandle,
+  domainOverride?: string | null,
 ): Promise<HuntOutcome> {
   const login = await loadMerchantLogin(userId, merchantId);
 
@@ -32,7 +33,7 @@ export async function huntCancelPageForUser(
     select: { id: true, name: true, domain: true, website: true },
   });
   let domain =
-    merchant.domain ??
+    domainOverride ?? merchant.domain ??
     (merchant.website ? hostnameOf(merchant.website) : null) ??
     (login?.loginUrl ? hostnameOf(login.loginUrl) : null);
   if (!domain) {
@@ -53,7 +54,7 @@ export async function huntCancelPageForUser(
       candidateId: null,
     };
   }
-  domain = registrableDomain(domain);
+  if (!domainOverride) domain = registrableDomain(domain);
 
   const session = await loadBrowserSession(userId, domain);
   if (!login && !session) {

@@ -78,6 +78,7 @@ async function searchSerper(query: string, apiKey: string): Promise<SearchResult
     },
     body: JSON.stringify({ q: query, num: 10 }),
     cache: "no-store",
+    signal: AbortSignal.timeout(12000),
   });
   if (!response.ok) {
     throw new Error(`Serper request failed with status ${response.status}`);
@@ -165,6 +166,11 @@ function describe(
   return domain
     ? `Nothing usable found for ${merchantName} (${domain}). Try their account page or call support.`
     : `Nothing usable found for ${merchantName}. The merchant's website could not be identified.`;
+}
+
+export async function discoverMerchantDomain(name: string): Promise<string | null> {
+  const results = await searchSerper(`${name} official website account billing`, requireSerperKey());
+  return inferMerchantDomain(name, results.filter((result) => !isPaidCancellationMiddleman(result)));
 }
 
 export async function findCancellationCandidatesForMerchant(

@@ -22,6 +22,7 @@ import {
   scoreNavLink,
 } from "./cancellation-browser-heuristics";
 import { huntCancelPageForUser } from "./cancellation-hunt";
+import { browserTarget } from "./browser-target";
 import { registrableDomain } from "./cancellation-rank";
 import { prisma } from "./prisma";
 
@@ -277,7 +278,8 @@ async function crawlToCancel(l: LiveAttempt): Promise<boolean> {
     if (controls.some((c) => isCancelControl(c.text, c.href) || classifyCancelControl(c.text) === "confirm")) return true;
     for (const link of links) {
       try {
-        if (registrableDomain(new URL(link.href).hostname.toLowerCase()) !== domain) continue;
+        const host = new URL(link.href).hostname.toLowerCase();
+        if (host !== domain && !host.endsWith(`.${domain}`)) continue;
       } catch {
         continue;
       }
@@ -311,7 +313,8 @@ export async function startCancelAttempt(userId: string, candidateId: string): P
   }
 
   const handle: BrowserHandle = { browser: null, page: null };
-  const hunt = await huntCancelPageForUser(userId, candidate.merchantId, handle);
+  const selectedDomain = await browserTarget(userId, candidateId);
+  const hunt = await huntCancelPageForUser(userId, candidate.merchantId, handle, selectedDomain);
   if (!handle.browser || !handle.page) {
     return finish(attempt.id, "FAILED", hunt.note, { url: hunt.url });
   }
@@ -319,7 +322,7 @@ export async function startCancelAttempt(userId: string, candidateId: string): P
   const l: LiveAttempt = {
     browser: handle.browser,
     page: handle.page,
-    domain: registrableDomain(new URL(hunt.url ?? handle.page.url()).hostname.toLowerCase()),
+    domain: selectedDomain ?? registrableDomain(new URL(hunt.url ?? handle.page.url()).hostname.toLowerCase()),
     merchantName,
     steps: [{ at: new Date().toISOString(), url: handle.page.url(), action: "hunt", text: hunt.status }],
     pendingControlText: null,

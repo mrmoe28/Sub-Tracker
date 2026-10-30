@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { huntCancelPageForUser } from "@/lib/cancellation-hunt";
+import { browserTarget } from "@/lib/browser-target";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireSameOrigin } from "@/lib/origin-check";
 import { prisma } from "@/lib/prisma";
@@ -30,7 +31,7 @@ export async function POST(
         { status: 400 },
       );
     }
-    const outcome = await huntCancelPageForUser(user.id, candidate.merchantId);
+    const outcome = await huntCancelPageForUser(user.id, candidate.merchantId, undefined, await browserTarget(user.id, id));
     return NextResponse.json({
       status: outcome.status,
       url: outcome.url,

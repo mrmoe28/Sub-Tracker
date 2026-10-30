@@ -1,6 +1,6 @@
 const APP_ORIGIN = "https://sub.lock28.com";
 
-async function discover(domain, sourceTabId) {
+async function discover(domain, sourceTabId, open = false) {
   if (typeof domain !== "string" || !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(domain)) {
     throw new Error("Invalid merchant domain.");
   }
@@ -12,6 +12,15 @@ async function discover(domain, sourceTabId) {
         (url.hostname === domain || url.hostname.endsWith(`.${domain}`));
     } catch { return false; }
   });
+  if (open) {
+    if (tab) {
+      await chrome.tabs.update(tab.id, { active: true });
+      await chrome.windows.update(tab.windowId, { focused: true });
+    } else {
+      await chrome.tabs.create({ url: `https://${domain}/`, active: true });
+    }
+    return { opened: true };
+  }
   const stores = await chrome.cookies.getAllCookieStores();
   const store = stores.find((item) => item.tabIds.includes(tab?.id ?? sourceTabId));
   if (!store) throw new Error("Chrome cookie store not found.");
@@ -26,7 +35,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     respond({ connected: true });
     return false;
   }
-  if (message.action !== "discover") return false;
-  discover(message.domain, sender.tab.id).then(respond).catch((error) => respond({ error: error.message }));
+  if (!["discover", "open"].includes(message.action)) return false;
+  discover(message.domain, sender.tab.id, message.action === "open").then(respond).catch((error) => respond({ error: error.message }));
   return true;
 });

@@ -4,10 +4,10 @@ window.addEventListener("message", async (event) => {
   if (event.source !== window || event.origin !== APP_ORIGIN) return;
   const request = event.data;
   if (request?.channel !== "subtracker-request" || typeof request.id !== "string") return;
-  if (!["ping", "discover"].includes(request.action)) return;
+  if (!["ping", "discover", "open"].includes(request.action)) return;
   try {
     let target;
-    if (request.action === "discover") {
+    if (request.action === "discover" || request.action === "open") {
       if (typeof request.candidateId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(request.candidateId)) return;
       const response = await fetch(`/api/subscriptions/${request.candidateId}/browser-target`, { cache: "no-store" });
       target = await response.json();

@@ -1,6 +1,6 @@
 "use client";
 
-export function discoverChromeSession(candidateId: string): Promise<void> {
+export function discoverChromeSession(candidateId: string, action: "discover" | "open" = "discover"): Promise<void> {
   return new Promise((resolve, reject) => {
     const id = crypto.randomUUID();
     const timer = setTimeout(() => {
@@ -12,10 +12,10 @@ export function discoverChromeSession(candidateId: string): Promise<void> {
           event.data?.channel !== "subtracker-response" || event.data.id !== id) return;
       clearTimeout(timer);
       window.removeEventListener("message", receive);
-      if (event.data.saved) resolve();
+      if (action === "open" ? event.data.opened : event.data.saved) resolve();
       else reject(new Error(event.data.error || "No Chrome session found."));
     }
     window.addEventListener("message", receive);
-    window.postMessage({ channel: "subtracker-request", action: "discover", candidateId, id }, window.location.origin);
+    window.postMessage({ channel: "subtracker-request", action, candidateId, id }, window.location.origin);
   });
 }

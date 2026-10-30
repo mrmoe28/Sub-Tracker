@@ -12,7 +12,6 @@ import {
   scoreNavLink,
   type Blocker,
 } from "./cancellation-browser-heuristics";
-import { registrableDomain } from "./cancellation-rank";
 import type { SessionCookie } from "./browser-session";
 
 export type HuntStatus =
@@ -252,7 +251,7 @@ async function scanPage(page: Page): Promise<{ controls: Control[]; links: NavLi
 function sameSite(url: string, domain: string): boolean {
   try {
     const host = new URL(url).hostname.toLowerCase();
-    return registrableDomain(host) === domain;
+    return host === domain || host.endsWith(`.${domain}`);
   } catch {
     return false;
   }

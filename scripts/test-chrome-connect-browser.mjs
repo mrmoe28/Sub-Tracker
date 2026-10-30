@@ -35,7 +35,7 @@ try {
   await merchant.goto("https://merchant.example/account");
   const app = await context.newPage();
   await app.goto("https://sub.lock28.com/subscriptions");
-  const discover = () => app.evaluate(() => new Promise((resolve, reject) => {
+  const discover = (action = "discover") => app.evaluate((action) => new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Extension bridge timed out")), 15000);
     window.addEventListener("message", (event) => {
       if (event.data?.channel === "subtracker-response" && event.data.id === "fixture-request") {
@@ -43,8 +43,8 @@ try {
         resolve(event.data);
       }
     });
-    window.postMessage({ channel: "subtracker-request", action: "discover", candidateId: "fixture-subscription", id: "fixture-request" }, location.origin);
-  }));
+    window.postMessage({ channel: "subtracker-request", action, candidateId: "fixture-subscription", id: "fixture-request" }, location.origin);
+  }), action);
   const result = await discover();
   assert.equal(result.saved, true, JSON.stringify(result));
   assert.equal(result.cookies, undefined);
@@ -55,6 +55,12 @@ try {
   assert.equal(savedSession.saved, true, JSON.stringify(savedSession));
   assert.equal(savedSession.cookies, undefined);
   assert.equal(captured, true);
+  const openedPage = context.waitForEvent("page");
+  const opened = await discover("open");
+  assert.equal(opened.opened, true);
+  const loginPage = await openedPage;
+  await loginPage.waitForURL("https://merchant.example/");
+  assert.equal(opened.cookies, undefined);
   await app.screenshot({ path: "/tmp/subtracker-connect-browser-fixture.png" });
   console.log("PASS: actual Chromium extension imports matching-tab and closed-tab sessions without exposing cookies in page messages.");
 } finally {
